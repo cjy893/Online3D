@@ -10,23 +10,26 @@ import (
 
 const dsn = "root:@1919810ysxB@tcp(localhost:3306)/test?charset=utf8mb4&loc=PRC&parseTime=true"
 
-func Regist(name, account, password string) (bool, string) {
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		logrus.Error(err)
-		return false, "加密错误"
-	}
-
+func initDB(db *sql.DB) (bool, string) {
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		logrus.Error(err)
-		return false, "MySQL连接错误"
+		return false, "数据库连接池初始化失败"
 	}
-	defer db.Close()
-
 	if err := db.Ping(); err != nil {
 		logrus.Error(err)
-		return false, "数据库连接错误"
+		return false, "数据库连接失败"
+	}
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(25)
+	return true, "数据库连接成功"
+}
+
+func Regist(db *sql.DB, name, account, password string) (bool, string) {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		logrus.Error(err)
+		return false, "加密失败"
 	}
 
 	stmt, err := db.Prepare("INSERT INTO Accounts (name, account, password) VALUES (?, ?, ?)")
@@ -44,25 +47,7 @@ func Regist(name, account, password string) (bool, string) {
 	return true, "注册成功"
 }
 
-func Login(account, password string) (bool, string) {
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		logrus.Error(err)
-		return false, "哈希生成错误"
-	}
-
-	db, err := sql.Open("mysql", dsn)
-	if err != nil {
-		logrus.Error(err)
-		return false, "MySQL连接错误"
-	}
-	defer db.Close()
-
-	if err := db.Ping(); err != nil {
-		logrus.Error(err)
-		return false, "数据库连接错误"
-	}
-
+func Login(db *sql.DB, account, password string) (bool, string) {
 	stmt, err := db.Prepare("SELECT password FROM Accounts WHERE account = ?")
 	if err != nil {
 		logrus.Error(err)
@@ -80,7 +65,8 @@ func Login(account, password string) (bool, string) {
 		return false, "查询错误"
 	}
 
-	if realPassword != string(hashedPassword) {
+	err = bcrypt.CompareHashAndPassword([]byte(realPassword), []byte(password))
+	if err != nil {
 		logrus.Error(err)
 		return false, "密码错误"
 	}

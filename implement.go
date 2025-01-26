@@ -10,6 +10,7 @@ import (
 	"sync"
 )
 
+// find the shell output with the storage path
 func LineContainsPrefix(line, prefix string) bool {
 	return len(line) >= len(prefix) && prefix == line[:len(prefix)]
 }
@@ -54,7 +55,10 @@ func main() {
 					fmt.Println("Output folder find error")
 					return
 				}
-				indexPath = line[first : first+19]
+				var builder strings.Builder
+				builder.Grow(19)
+				builder.WriteString(line[first : first+19])
+				indexPath = builder.String()
 			}
 			fmt.Println(stdOutScanner.Text())
 		}
@@ -86,6 +90,10 @@ func main() {
 
 	viewerPath := "C:/Users/Administrator/Online3D/3DGS/gaussian-splatting/SIBR_viewer.py"
 	err = os.Chdir(filepath.Dir(viewerPath))
+	if err != nil {
+		fmt.Println("Error changing directory:", err)
+		return
+	}
 
 	cmd = exec.Command("python3", filepath.Base(viewerPath), indexPathAbs)
 	output, err := cmd.CombinedOutput()

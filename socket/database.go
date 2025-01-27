@@ -63,6 +63,7 @@ func Regist(db *sql.DB, name, password string) error {
 		return fmt.Errorf("账号 %s 已存在", name)
 	}
 
+	//生成账号
 	var builder strings.Builder
 	builder.WriteString(name)
 	builder.WriteString("@Online3D.com")

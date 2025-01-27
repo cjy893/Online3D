@@ -1,167 +1,153 @@
 package Online3D
 
 import (
-	"database/sql"
+	"errors"
 	"fmt"
-	"strings"
 
-	_ "github.com/go-sql-driver/mysql"
+	nativeMysql "github.com/go-sql-driver/mysql"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
 
 const dsn = "root:%401919810ysxB@tcp(localhost:3306)/test?charset=utf8mb4&loc=PRC&parseTime=true"
 
-// 初始化数据库连接池
-func InitDB() (*sql.DB, error) {
-	db, err := sql.Open("mysql", dsn)
-	if err != nil {
-		logrus.Errorf("初始化连接池失败: %v", err)
-		return nil, err
-	}
-	if err := db.Ping(); err != nil {
-		logrus.Errorf("数据库连接失败: %v", err)
-		return nil, err
-	}
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(25)
-	return db, nil
+type Account struct {
+	Name     string `gorm:"column:name;size:20"`
+	Account  string `gorm:"column:name;size:33"`
+	Password string `gorm:"column:password;size:60"`
 }
 
-// 注册用户账号操作
-func Regist(db *sql.DB, name, password string) error {
-	//对用户密码进行bcrypt加密，数据库的密码会以哈希的方式储存
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+func (Account) TableName() string {
+	return "accounts"
+}
+
+func (a *Account) BeforeCreate(tx *gorm.DB) error {
+	hashed, err := bcrypt.GenerateFromPassword([]byte(a.Password), bcrypt.DefaultCost)
 	if err != nil {
 		logrus.Errorf("加密失败:%v", err)
 		return err
 	}
-
-	//初始化事务，并设置结束回滚
-	tx, err := db.Begin()
-	if err != nil {
-		logrus.Errorf("注册失败:%v", err)
-		return err
-	}
-	defer tx.Rollback()
-
-	//使用参数化查询，查询是否已经存在同名账号
-	stmt, err := tx.Prepare("SELECT 1 FROM Accounts WHERE name = ?")
-	if err != nil {
-		logrus.Errorf("查询账号失败:%v", err)
-		return err
-	}
-	defer stmt.Close()
-
-	var exists bool
-	err = stmt.QueryRow(name).Scan(&exists)
-	if err != nil && err != sql.ErrNoRows {
-		logrus.Errorf("查询账号失败: %v", err)
-		return fmt.Errorf("服务暂不可用")
-	}
-	if exists {
-		return fmt.Errorf("账号 %s 已存在", name)
-	}
-
-	//生成账号
-	var builder strings.Builder
-	builder.WriteString(name)
-	builder.WriteString("@Online3D.com")
-	account := builder.String()
-
-	//注册账号
-	stmt, err = tx.Prepare("INSERT INTO Accounts (name, account, password) VALUES (?, ?, ?)")
-	if err != nil {
-		logrus.Errorf("注册失败:%v", err)
-		return err
-	}
-
-	_, err = stmt.Exec(name, account, hashedPassword)
-	if err != nil {
-		logrus.Errorf("注册失败:%v", err)
-		return err
-	}
-
-	//如果事务提交失败，则返回错误并回滚
-	if err := tx.Commit(); err != nil {
-		logrus.Errorf("提交事务失败:%v", err)
-		return err
-	}
-
+	a.Password = string(hashed)
 	return nil
 }
 
-// 登录用户账号操作
-func Login(db *sql.DB, account, password string) error {
-	stmt, err := db.Prepare("SELECT password FROM Accounts WHERE account = ?")
-	if err != nil {
-		logrus.Errorf("查询失败:%v", err)
-		return err
-	}
-	defer stmt.Close()
+type Work struct {
+	Account  string `gorm:"column:account;primaryKey;size:33"`
+	WorkName string `gorm:"column:workname;primaryKey;size:60"`
+	WorkID   string `gorm:"column:workid;size:10"`
+}
 
-	//查询账号真正的密码，如果不存在账号，则返回错误
-	var realPassword string
-	err = stmt.QueryRow(account).Scan(&realPassword)
+func (Work) TableName() string {
+	return "works"
+}
+
+// 初始化数据库连接池
+func InitDB() (*gorm.DB, error) {
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
-		if err == sql.ErrNoRows {
-			logrus.Errorf("不存在该账号:%v", err)
-			return err
+		logrus.Errorf("数据库连接失败:%v", err)
+		return nil, err
+	}
+
+	sqlDB, _ := db.DB()
+	sqlDB.SetMaxOpenConns(25)
+	sqlDB.SetMaxIdleConns(25)
+	return db, nil
+}
+
+// 注册用户账号操作
+func Regist(db *gorm.DB, name, password string) error {
+	// 生成标准账号格式
+	account := fmt.Sprintf("%s@Online3D.com", name)
+
+	newUser := Account{
+		Name:     name,
+		Account:  account,
+		Password: password, // 钩子会自动加密
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&newUser).Error; err != nil {
+			if isDuplicateKeyError(err) {
+				logrus.Warnf("账号已存在: %s", account)
+				return fmt.Errorf("账号已存在")
+			}
+			logrus.Errorf("注册失败: %v", err)
+			return fmt.Errorf("注册失败")
 		}
-		logrus.Errorf("登录失败:%v", err)
-		return err
+		return nil
+	})
+}
+
+// 登录用户账号操作
+func Login(db *gorm.DB, account, password string) error {
+	var user Account
+	err := db.Where("account = ?", account).First(&user).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		logrus.Warnf("账号不存在: %s", account)
+		return fmt.Errorf("账号不存在")
+	}
+	if err != nil {
+		logrus.Errorf("登录查询失败: %v", err)
+		return fmt.Errorf("系统错误")
 	}
 
-	//比较真正的密码与输入密码的哈希，判断密码是否正确
-	err = bcrypt.CompareHashAndPassword([]byte(realPassword), []byte(password))
-	if err != nil {
-		logrus.Errorf("密码错误:%v", err)
-		return err
+	if err := bcrypt.CompareHashAndPassword(
+		[]byte(user.Password),
+		[]byte(password),
+	); err != nil {
+		logrus.Warnf("密码错误: %s", account)
+		return fmt.Errorf("密码错误")
 	}
+
 	return nil
 }
 
 // 添加作品
-func AddWork(db *sql.DB, account, workName, workId string) error {
-	tx, err := db.Begin()
-	if err != nil {
-		logrus.Errorf("作品信息记录失败:%v", err)
-		return err
-	}
-	defer tx.Rollback()
+func AddWork(db *gorm.DB, account, workName, workId string) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		work := Work{
+			Account:  account,
+			WorkName: workName,
+			WorkID:   workId,
+		}
 
-	stmt, err := tx.Prepare("INSERT INTO Works (account, workname, workid) VALUE (?, ?, ?)")
-	if err != nil {
-		logrus.Errorf("作品信息记录失败:%v", err)
-		return err
-	}
-	defer stmt.Close()
-
-	_, err = stmt.Exec(account, workName, workId)
-	if err != nil {
-		logrus.Errorf("作品信息记录失败:%v", err)
-		return err
-	}
-	return nil
+		if err := tx.Create(&work).Error; err != nil {
+			if isDuplicateKeyError(err) {
+				logrus.Warnf("作品已存在: %s/%s", account, workName)
+				return fmt.Errorf("作品已存在")
+			}
+			logrus.Errorf("创建作品失败: %v", err)
+			return fmt.Errorf("系统错误")
+		}
+		return nil
+	})
 }
 
-func QueryWork(db *sql.DB, account, workName string) (string, error) {
-	stmt, err := db.Prepare("SELECT workid FROM Works WHERE account = ? AND workname = ?")
-	if err != nil {
-		logrus.Errorf("作品信息查询错误:%v", err)
-		return "", err
-	}
-	defer stmt.Close()
+// 查询作品
+func QueryWork(db *gorm.DB, account, workName string) (string, error) {
+	var work Work
+	err := db.Model(&Work{}).
+		Where("account = ? AND workname = ?", account, workName).
+		First(&work).
+		Error
 
-	var workId string
-	err = stmt.QueryRow(account, workName).Scan(&workId)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			logrus.Errorf("不存在该作品:%v", err)
-			return "", err
-		}
-		logrus.Errorf("作品信息查询错误:%v", err)
-		return "", err
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		logrus.Warnf("作品不存在: %s/%s", account, workName)
+		return "", fmt.Errorf("作品不存在")
+	case err != nil:
+		logrus.Errorf("查询作品失败: %v", err)
+		return "", fmt.Errorf("系统错误")
 	}
-	return workId, nil
+
+	return work.WorkID, nil
+}
+
+// 辅助函数：判断是否是唯一键冲突错误
+func isDuplicateKeyError(err error) bool {
+	var mysqlErr *nativeMysql.MySQLError
+	return errors.As(err, &mysqlErr) && mysqlErr.Number == 1062
 }

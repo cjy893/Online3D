@@ -14,8 +14,8 @@ import (
 const dsn = "root:%401919810ysxB@tcp(localhost:3306)/test?charset=utf8mb4&loc=PRC&parseTime=true"
 
 type Account struct {
-	Name     string `gorm:"column:name;size:20"`
-	Account  string `gorm:"column:name;size:33"`
+	Name     string `gorm:"column:name;uniqueIndex;size:20"`
+	Account  string `gorm:"column:name;uniqueIndex;size:33"`
 	Password string `gorm:"column:password;size:60"`
 }
 

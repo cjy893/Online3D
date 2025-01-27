@@ -1,4 +1,4 @@
-package Online3D
+package database
 
 import (
 	"errors"
@@ -84,7 +84,11 @@ func Regist(db *gorm.DB, name, password string) error {
 // 登录用户账号操作
 func Login(db *gorm.DB, account, password string) error {
 	var user Account
-	err := db.Where("account = ?", account).First(&user).Error
+	err := db.Model(&Account{}).
+		Where("account = ?", account).
+		First(&user).
+		Error
+
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		logrus.Warnf("账号不存在: %s", account)
 		return fmt.Errorf("账号不存在")
@@ -134,11 +138,11 @@ func QueryWork(db *gorm.DB, account, workName string) (string, error) {
 		First(&work).
 		Error
 
-	switch {
-	case errors.Is(err, gorm.ErrRecordNotFound):
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		logrus.Warnf("作品不存在: %s/%s", account, workName)
 		return "", fmt.Errorf("作品不存在")
-	case err != nil:
+	}
+	if err != nil {
 		logrus.Errorf("查询作品失败: %v", err)
 		return "", fmt.Errorf("系统错误")
 	}

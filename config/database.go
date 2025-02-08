@@ -16,6 +16,6 @@ func ConnectDB() {
 		panic("failed to connect database: " + err.Error())
 	}
 
-	db.AutoMigrate(&models.User{}, &models.Video{})
+	db.AutoMigrate(&models.User{}, &models.Video{}, &models.Work{})
 	Conf.DB = db // 将数据库实例存入 AppConfig
 }

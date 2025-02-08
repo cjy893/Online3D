@@ -13,6 +13,7 @@ type AppConfig struct {
 	UploadPath string
 	PythonPath string
 	OutputPath string
+	ServerPort string
 }
 
 var Conf AppConfig
@@ -23,6 +24,7 @@ func LoadConfig() {
 		UploadPath: getEnvWithDefault("UPLOAD_PATH", "./uploads"),
 		PythonPath: os.Getenv("PYTHON_PATH"),
 		OutputPath: getEnvWithDefault("OUTPUT_PATH", "./outputs"),
+		ServerPort: "8080",
 	}
 }
 

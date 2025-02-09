@@ -19,9 +19,10 @@ func RouterConfig() *gin.Engine {
 	auth := router.Group("/user")
 	auth.Use(middleware.AuthMiddleware())
 	{
-		auth.POST("/upload")
-		auth.GET("/video/:id")
-		auth.GET("/work/:id")
+		auth.POST("/upload", handlers.UploadVideo)
+		auth.GET("/video/:id", handlers.GetVideo)
+		auth.GET("/work/:id", handlers.GetWork)
+		auth.DELETE("/delete", handlers.DeleteUser)
 	}
 
 	router.Static("/uploads", config.Conf.UploadPath)

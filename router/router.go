@@ -15,6 +15,7 @@ func RouterConfig() *gin.Engine {
 	router.POST("/register", handlers.Register)
 	router.POST("/login", handlers.Login)
 
+	//认证路由
 	auth := router.Group("/user")
 	auth.Use(middleware.AuthMiddleware())
 	{

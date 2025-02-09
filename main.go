@@ -17,9 +17,6 @@ func main() {
 	if config.Conf.ServerPort == "" {
 		logrus.Fatal("服务端口配置缺失")
 	}
-
-	// 初始化数据库连接
-	config.ConnectDB()
 	defer func() {
 		if config.Conf.DB != nil {
 			sqlDB, err := config.Conf.DB.DB()

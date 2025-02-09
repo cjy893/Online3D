@@ -9,13 +9,6 @@
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "env": {
-              "DB_DSN": "root:%401919810ysxB@tcp(localhost:3306)/test?charset=utf8mb4&loc=PRC&parseTime=true",
-              "JWT_SECRET": "mysecretkey",
-              "UPLOAD_PATH": "../3DGS/",
-              "PYTHON_PATH": "../3DGS/guassian-splatting/envs/gaussian_splatting",
-              "OUTPUT_PATH": "../3DGS/"
-            }
         }
     ]
 }

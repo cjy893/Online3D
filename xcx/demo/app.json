@@ -1,0 +1,14 @@
+{
+  "entryPagePath": "pages/login/login",
+  "pages": [
+    "pages/login/login",
+    "pages/register/register",
+    "pages/upload/upload",
+    "pages/showmedia/showmedia"
+  ],
+  "window": {
+    "navigationBarTitleText": "城市美化设计师",
+    "navigationBarBackgroundColor": "#000000"
+  },
+  "style": "v2"
+}

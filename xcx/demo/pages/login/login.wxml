@@ -1,0 +1,19 @@
+<!--pages/login/login.wxml-->
+<view class="container">
+  <view class="form-container">
+    <view class="form-item">
+      <text>用户名/邮箱:</text>
+      <input type="text" placeholder="请输入用户名/邮箱" bindinput="handleUsernameInput" value="{{username}}"/>
+    </view>
+
+    <view class="form-item">
+      <text>密码:</text>
+      <input type="password" placeholder="请输入密码" bindinput="handlePasswordInput" value="{{password}}"/>
+    </view>
+
+    <button class="login-btn" bindtap="handleLogin">登录</button>
+    <view class="register-link" bindtap="navigateToRegister">
+      <text>还没有账号？立即注册</text>
+    </view>
+  </view>
+</view>

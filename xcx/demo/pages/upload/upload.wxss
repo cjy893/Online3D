@@ -1,0 +1,13 @@
+/* pages/upload/upload.wxss */
+.container{
+  display: flex;
+  background-color:aqua;
+  position: relative;
+  width: 100%;
+  height: 100vh;
+}
+button{
+  height: 85rpx;
+  margin-top: 90vh;
+  border-radius: 80rpx;
+}

@@ -1,0 +1,4 @@
+<!--pages/upload/upload.wxml-->
+<view class="container">
+  <button bindtap="chooseAndUpload">上传视频</button>
+</view>

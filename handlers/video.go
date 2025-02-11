@@ -6,6 +6,7 @@ import (
 	"myapp/models"
 	"myapp/services"
 	"net/http"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -16,10 +17,16 @@ import (
 )
 
 func UploadVideo(c *gin.Context) {
-	userName, _ := c.Get("userID")
+	userID, _ := c.Get("userID")
+	var user models.User
+	if err := config.Conf.DB.First(&user, userID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "未找到用户"})
+		return
+	}
+
 	file, err := c.FormFile("video")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "File upload failed"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "文件上传失败"})
 		return
 	}
 
@@ -27,10 +34,16 @@ func UploadVideo(c *gin.Context) {
 	ext := filepath.Ext(file.Filename)
 	newFileName := uuid.New().String() + ext
 	filePath := filepath.Join(config.Conf.UploadPath, newFileName)
+	filePathAbs, _ := filepath.Abs(filePath)
+
+	if err := os.MkdirAll(config.Conf.UploadPath, 0755); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "文件上传失败"})
+		return
+	}
 
 	// 保存文件
-	if err := c.SaveUploadedFile(file, filePath); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "File save failed"})
+	if err := c.SaveUploadedFile(file, filePathAbs); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "文件保存失败"})
 		return
 	}
 
@@ -39,9 +52,9 @@ func UploadVideo(c *gin.Context) {
 	err = config.Conf.DB.Transaction(func(tx *gorm.DB) error {
 		video = models.Video{
 			VideoID:  newFileName,
-			UserName: userName.(string),
+			UserName: user.Username,
 			FileName: file.Filename,
-			FilePath: filePath,
+			FilePath: filePathAbs,
 			Status:   "uploaded",
 		}
 		return tx.Create(&video).Error
@@ -52,7 +65,7 @@ func UploadVideo(c *gin.Context) {
 	}
 
 	// 异步处理视频（不包裹在事务中）
-	go processVideo(video.ID, userName.(string), video.FileName)
+	go processVideo(video.ID, user.Username, video.FileName)
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message":  "Video uploaded successfully",

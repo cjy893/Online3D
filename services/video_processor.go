@@ -45,10 +45,7 @@ func NewVideoProcessor() (*VideoProcessor, error) {
 
 func (vp *VideoProcessor) Process(video *models.Video, processor *VideoProcessor) error {
 	// 生成唯一输出目录
-	outputFolder := filepath.Join(vp.BaseOutputFolder, fmt.Sprintf("output_%d", video.ID))
-	if err := os.MkdirAll(outputFolder, 0755); err != nil {
-		return fmt.Errorf("failed to create output folder: %w", err)
-	}
+	outputFolder := utils.SafeJoin(vp.BaseOutputFolder, "output")
 
 	// 执行训练命令
 	var err error
@@ -62,7 +59,8 @@ func (vp *VideoProcessor) Process(video *models.Video, processor *VideoProcessor
 }
 
 func (vp *VideoProcessor) runTraining(videoPath, outputFolder string) (string, error) {
-	if !filepath.IsAbs(videoPath) || !strings.HasPrefix(videoPath, config.Conf.UploadPath) {
+	uploadPathAbs, _ := filepath.Abs(config.Conf.UploadPath)
+	if !filepath.IsAbs(videoPath) || !strings.HasPrefix(videoPath, uploadPathAbs) {
 		return "", fmt.Errorf("invalid video path")
 	}
 

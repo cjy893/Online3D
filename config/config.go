@@ -29,9 +29,9 @@ func LoadConfig() {
 	}
 	Conf = AppConfig{
 		JWTSecret:  os.Getenv("JWT_SECRET"),
-		UploadPath: getEnvWithDefault("UPLOAD_PATH", "./uploads"),
+		UploadPath: os.Getenv("UPLOAD_PATH"),
 		PythonPath: os.Getenv("PYTHON_PATH"),
-		OutputPath: getEnvWithDefault("OUTPUT_PATH", "./outputs"),
+		OutputPath: os.Getenv("OUTPUT_PATH"),
 		ServerPort: "8080",
 		DSN:        os.Getenv("DB_DSN"),
 	}
@@ -41,13 +41,8 @@ func LoadConfig() {
 		panic("failed to connect database: " + err.Error())
 	}
 
-	db.AutoMigrate(&models.User{}, &models.Video{}, &models.Work{})
-	Conf.DB = db // 将数据库实例存入 AppConfig
-}
-
-func getEnvWithDefault(key, defaultValue string) string {
-	if val := os.Getenv(key); val != "" {
-		return val
+	if err := db.AutoMigrate(&models.User{}, &models.Video{}, &models.Work{}); err != nil {
+		panic("Database migration failed: " + err.Error())
 	}
-	return defaultValue
+	Conf.DB = db // 将数据库实例存入 AppConfig
 }

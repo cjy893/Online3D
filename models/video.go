@@ -9,4 +9,5 @@ type Video struct {
 	FileName string
 	FilePath string
 	Status   string
+	ErrorLog string
 }

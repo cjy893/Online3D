@@ -61,8 +61,8 @@ func Register(c *gin.Context) {
 
 func Login(c *gin.Context) {
 	var credentials struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+		Identifier string `json:"identifier"` //用户名或邮箱
+		Password   string `json:"password"`
 	}
 
 	if err := c.ShouldBindJSON(&credentials); err != nil {
@@ -71,13 +71,13 @@ func Login(c *gin.Context) {
 	}
 
 	var user models.User
-	if config.Conf.DB.Where("username = ?", credentials.Username).First(&user).Error != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+	if err := config.Conf.DB.Where("username = ? OR email = ?", credentials.Identifier, credentials.Identifier).First(&user).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名/邮箱错误"})
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(credentials.Password)); err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "密码错误"})
 		return
 	}
 

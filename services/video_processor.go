@@ -14,11 +14,12 @@ import (
 )
 
 type VideoProcessor struct {
-	TrainerPath      string
-	ViewerPath       string
-	PythonPath       string
-	BaseOutputFolder string
-	OutputFolder     string
+	TrainerPath       string
+	PythonPath        string
+	BaseOutputFolder  string
+	OutputFolder      string
+	PythonInterpreter string
+	FPS               int
 }
 
 func NewVideoProcessor() (*VideoProcessor, error) {
@@ -29,17 +30,13 @@ func NewVideoProcessor() (*VideoProcessor, error) {
 		return nil, fmt.Errorf("invalid trainer path")
 	}
 
-	viewerPath := utils.SafeJoin(projectRoot, "3DGS/gaussian-splatting/SIBR_viewer.py")
-	if viewerPath == "" {
-		return nil, fmt.Errorf("invalid viewer path")
-	}
-
 	return &VideoProcessor{
-		TrainerPath:      trainerPath,
-		ViewerPath:       viewerPath,
-		PythonPath:       utils.SafeJoin(projectRoot, "3DGS/gaussian-splatting/envs/gaussian_splatting"),
-		BaseOutputFolder: utils.SafeJoin(projectRoot, "output"),
-		OutputFolder:     "",
+		TrainerPath:       trainerPath,
+		PythonPath:        utils.SafeJoin(projectRoot, "3DGS/gaussian-splatting/envs/gaussian_splatting"),
+		BaseOutputFolder:  utils.SafeJoin(projectRoot, "output"),
+		OutputFolder:      "",
+		PythonInterpreter: "C:/Users/Administrator/anaconda3/envs/gaussian_splatting/python.exe",
+		FPS:               2,
 	}, nil
 }
 
@@ -64,7 +61,7 @@ func (vp *VideoProcessor) runTraining(videoPath, outputFolder string) (string, e
 		return "", fmt.Errorf("invalid video path")
 	}
 
-	cmd := exec.Command("python3", vp.TrainerPath, "--input", videoPath, "--output", outputFolder)
+	cmd := exec.Command(vp.PythonInterpreter, vp.TrainerPath, "--video", videoPath)
 	cmd.Env = append(os.Environ(), fmt.Sprintf("PYTHONPATH=%s", vp.PythonPath))
 	var stdoutBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf

@@ -32,11 +32,12 @@ func UploadVideo(c *gin.Context) {
 
 	// 生成唯一文件名
 	ext := filepath.Ext(file.Filename)
-	newFileName := uuid.New().String() + ext
-	filePath := filepath.Join(config.Conf.UploadPath, newFileName)
+	newFileName := uuid.New().String()
+	fileDirPath := filepath.Join(config.Conf.UploadPath, newFileName)
+	filePath := filepath.Join(fileDirPath, newFileName+ext)
 	filePathAbs, _ := filepath.Abs(filePath)
 
-	if err := os.MkdirAll(config.Conf.UploadPath, 0755); err != nil {
+	if err := os.MkdirAll(fileDirPath, 0755); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "文件上传失败"})
 		return
 	}

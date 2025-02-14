@@ -1,1 +1,0 @@
-Namespace(data_device='cuda', eval=False, images='images', model_path='./output/37712e40-6', resolution=-1, sh_degree=3, source_path='C:\\Users\\Administrator\\Online3D\\uploads\\63ad73e7-9068-4fe7-ba36-8059c9a8f711', white_background=False)

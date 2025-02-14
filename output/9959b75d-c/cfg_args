@@ -1,1 +1,0 @@
-Namespace(data_device='cuda', eval=False, images='images', model_path='./output/9959b75d-c', resolution=-1, sh_degree=3, source_path='C:\\Users\\Administrator\\Online3D\\3DGS\\gaussian-splatting\\data\\b8cad32f-572d-466f-89de-7c20588c1ea7', white_background=False)

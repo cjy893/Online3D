@@ -35,7 +35,7 @@ func Register(c *gin.Context) {
 
 	//检查邮箱是否已存在
 	var existingEmail models.User
-	if err := tx.Where("email = ?", user.Email).First(&existingEmail).Error; err != nil {
+	if err := tx.Where("email = ?", user.Email).First(&existingEmail).Error; err == nil {
 		tx.Rollback()
 		c.JSON(http.StatusConflict, gin.H{"error": "邮箱已被注册"})
 		return

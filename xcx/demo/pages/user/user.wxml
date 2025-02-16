@@ -1,0 +1,9 @@
+<!--pages/user/user.wxml-->
+<view class="container">
+  <view class="button-box">
+    <button class="btn" bindtap="navigateToUpload">上传视频</button>
+    <button class="btn" bindtap="navigateToVideoSearch">搜索视频</button>
+    <button class="btn" bindtap="navigateToWorkSearch">搜索作品</button>
+    <button class="btn" bindtap="navigateToUserCenter">用户中心</button>
+  </view>
+</view>

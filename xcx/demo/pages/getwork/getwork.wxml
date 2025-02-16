@@ -1,0 +1,4 @@
+<view class="container">
+  <image wx:if="{{isImage}}" src="{{filePath}}" mode="aspectFit" />
+  <video wx:if="{{isVideo}}" src="{{filePath}}" controls></video>
+</view>

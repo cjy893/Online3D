@@ -68,7 +68,7 @@ Page({
 
             // 跳转到首页或其他页面
             wx.navigateTo({
-              url: '/pages/upload/upload'
+              url: '/pages/user/user'
               });
           }
           else {

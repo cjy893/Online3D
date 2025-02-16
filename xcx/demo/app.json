@@ -4,7 +4,9 @@
     "pages/login/login",
     "pages/register/register",
     "pages/upload/upload",
-    "pages/showmedia/showmedia"
+    "pages/showmedia/showmedia",
+    "pages/getwork/getwork",
+    "pages/user/user"
   ],
   "window": {
     "navigationBarTitleText": "城市美化设计师",

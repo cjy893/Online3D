@@ -33,6 +33,14 @@ func Register(c *gin.Context) {
 		return
 	}
 
+	//检查邮箱是否已存在
+	var existingEmail models.User
+	if err := tx.Where("email = ?", user.Email).First(&existingEmail).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusConflict, gin.H{"error": "邮箱已被注册"})
+		return
+	}
+
 	// 哈希密码
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {

@@ -16,6 +16,8 @@ type AppConfig struct {
 	UploadPath string
 	PythonPath string
 	OutputPath string
+	SplatPath  string
+	ViewerPath string
 	ServerPort string
 	DSN        string
 }
@@ -32,6 +34,8 @@ func LoadConfig() {
 		UploadPath: os.Getenv("UPLOAD_PATH"),
 		PythonPath: os.Getenv("PYTHON_PATH"),
 		OutputPath: os.Getenv("OUTPUT_PATH"),
+		SplatPath:  os.Getenv("SPLAT_PATH"),
+		ViewerPath: os.Getenv("VIEWER_PATH"),
 		ServerPort: "8080",
 		DSN:        os.Getenv("DB_DSN"),
 	}

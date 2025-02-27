@@ -12,16 +12,18 @@ func RouterConfig() *gin.Engine {
 	router := gin.Default()
 
 	//公共路由
-	router.POST("/register", handlers.Register)
-	router.POST("/login", handlers.Login)
+	router.PUT("/register", handlers.Register)
+	router.PUT("/login", handlers.Login)
 
 	//认证路由
 	auth := router.Group("/user")
 	auth.Use(middleware.AuthMiddleware())
 	{
-		auth.POST("/upload", handlers.UploadVideo)
-		auth.GET("/video/:id", handlers.GetVideo)
-		auth.GET("/work/:id", handlers.GetWork)
+		auth.PUT("/video/upload", handlers.UploadVideo)
+		auth.PUT("/work/init", handlers.InitModel)
+		auth.GET("/video/get/:id", handlers.GetVideo)
+		auth.GET("/work/get", handlers.GetWorkPath)
+		auth.GET("/work/view", handlers.GetViwer)
 		auth.DELETE("/delete", handlers.DeleteUser)
 	}
 

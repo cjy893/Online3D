@@ -40,7 +40,7 @@ func NewVideoProcessor() (*VideoProcessor, error) {
 	}, nil
 }
 
-func (vp *VideoProcessor) Process(video *models.Video, processor *VideoProcessor) error {
+func (vp *VideoProcessor) ProcessVideo(video *models.Video, processor *VideoProcessor) error {
 	// 生成唯一输出目录
 	outputFolder := utils.SafeJoin(vp.BaseOutputFolder, "output")
 
@@ -50,7 +50,6 @@ func (vp *VideoProcessor) Process(video *models.Video, processor *VideoProcessor
 	if err != nil {
 		return err
 	}
-
 	// 注意：此处不再直接更新数据库，由外层统一处理状态
 	return nil
 }
@@ -83,4 +82,37 @@ func (vp *VideoProcessor) runTraining(videoPath, outputFolder string) (string, e
 		}
 	}
 	return outputFolder, nil
+}
+
+func (vp *VideoProcessor) Splat(workPath string) error {
+	plyPath, err := findPlyPath(workPath)
+	if err != nil {
+		return fmt.Errorf("fail to find .ply file: %v", err)
+	}
+	splatPath := strings.Split(plyPath, ".")[0]
+	splatPath += ".splat"
+
+	cmd := exec.Command(vp.PythonInterpreter, "web/convert.py", plyPath, "--output", splatPath)
+	cmd.Env = append(os.Environ(), fmt.Sprintf("PYTHONPATH=%s", "3DGS/gaussian-splatting/envs/gaussian_splatting"))
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("fail to convert to splat file:%w", err)
+	}
+	return nil
+}
+
+func findPlyPath(filePath string) (string, error) {
+	if _, err := os.Stat(filePath + "/point_cloud/iteration_30000/point_cloud.ply"); err != nil {
+		if _, err = os.Stat(filePath + "/point_cloud/iteration_7000/point_cloud.ply"); err != nil {
+			if _, err = os.Stat(filePath + "input.ply"); err != nil {
+				return "", err
+			} else {
+				filePath += "input.ply"
+			}
+		} else {
+			filePath += "/point_cloud/iteration_7000/point_cloud.ply"
+		}
+	} else {
+		filePath += "/point_cloud/iteration_7000/point_cloud.ply"
+	}
+	return filePath, nil
 }

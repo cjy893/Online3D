@@ -19,13 +19,12 @@ import (
 
 func InitModel(c *gin.Context) {
 	videoID := c.Param("id")
-	userName := c.Param("username")
-	fileName := c.Param("filename")
+	fileName := c.Param("file_name")
 
 	uVideoID, err := strconv.ParseUint(videoID, 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "id is not a num",
+			"error": "id is not a number",
 		})
 		return
 	}
@@ -39,11 +38,11 @@ func InitModel(c *gin.Context) {
 		return
 	}
 
-	//创建work记录
+	// 创建work记录
 	var work models.Work
 	err = config.Conf.DB.Transaction(func(tx *gorm.DB) error {
 		work = models.Work{
-			UserName: userName,
+			UserName: video.UserName,
 			FileName: fileName,
 			Status:   "processing",
 		}
@@ -60,47 +59,57 @@ func InitModel(c *gin.Context) {
 	// 执行training
 	processor, err := services.NewVideoProcessor()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"init error": "fail to train the model",
-		})
-		if updateErr := updateWorkStatus(work.ID, "process failed", processor.OutputFolder, err.Error(), time.Now()); updateErr != nil {
+		if updateErr := updateWorkStatus(work.ID, "process failed", "", err.Error(), time.Now()); updateErr != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"status error": updateErr.Error(),
 			})
+			return
 		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"init error": "fail to train the model",
+		})
 		return
 	}
 
 	startTime := time.Now()
 	if err := processor.ProcessVideo(&video, processor); err != nil {
+		if updateErr := updateWorkStatus(work.ID, "process failed", processor.OutputFolder, err.Error(), startTime); updateErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status error": updateErr.Error(),
+			})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "fail to train the model",
 		})
-		if updateErr := updateWorkStatus(work.ID, "process failed", processor.OutputFolder, err.Error(), startTime); updateErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status error": updateErr.Error(),
-			})
-		}
 		return
 	}
 
-	//执行splat
+	// 执行splat
 	if err := processor.Splat(processor.OutputFolder); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "fail to splat",
-		})
 		if updateErr := updateWorkStatus(work.ID, "process failed", processor.OutputFolder, err.Error(), startTime); updateErr != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"status error": updateErr.Error(),
 			})
+			return
 		}
-	} else {
-		if updateErr := updateWorkStatus(work.ID, "process failed", processor.OutputFolder, "", startTime); updateErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status error": updateErr.Error(),
-			})
-		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "fail to splat",
+		})
+		return
 	}
+
+	// 更新状态为完成
+	if updateErr := updateWorkStatus(work.ID, "completed", processor.OutputFolder, "", startTime); updateErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"status error": updateErr.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Model initialization and processing completed successfully",
+	})
 }
 
 func updateWorkStatus(workID uint, status, outputFolder, errorLog string, startTime time.Time) error {

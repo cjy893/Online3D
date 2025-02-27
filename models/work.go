@@ -9,5 +9,5 @@ type Work struct {
 	FilePath    string
 	Status      string
 	ProcessTime string
-	errorLog    string
+	ErrorLog    string
 }

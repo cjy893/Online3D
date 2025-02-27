@@ -12,11 +12,24 @@ import (
 	"gorm.io/gorm"
 )
 
-func UploadVideo(c *gin.Context) {
-	userID, _ := c.Get("userID")
+func checkUser(c *gin.Context) (*models.User, bool) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证的用户"})
+		return nil, false
+	}
+
 	var user models.User
 	if err := config.Conf.DB.First(&user, userID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "未找到用户"})
+		return nil, false
+	}
+	return &user, true
+}
+
+func UploadVideo(c *gin.Context) {
+	user, ok := checkUser(c)
+	if !ok {
 		return
 	}
 
@@ -26,20 +39,26 @@ func UploadVideo(c *gin.Context) {
 		return
 	}
 
+	title := c.PostForm("title")
+	if title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "标题不能为空"})
+		return
+	}
+
 	// 生成唯一文件名
 	ext := filepath.Ext(file.Filename)
-	newFileName := uuid.New().String()
-	fileDirPath := filepath.Join(config.Conf.UploadPath, newFileName)
-	filePath := filepath.Join(fileDirPath, newFileName+ext)
-	filePathAbs, _ := filepath.Abs(filePath)
+	dirUUID := uuid.New().String()
+	fileUUID := uuid.New().String()
+	fileDirPath := filepath.Join(config.Conf.UploadPath, dirUUID)
+	filePath := filepath.Join(fileDirPath, fileUUID+ext)
 
 	if err := os.MkdirAll(fileDirPath, 0755); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "文件上传失败"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法创建目录"})
 		return
 	}
 
 	// 保存文件
-	if err := c.SaveUploadedFile(file, filePathAbs); err != nil {
+	if err := c.SaveUploadedFile(file, filePath); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "文件保存失败"})
 		return
 	}
@@ -48,10 +67,9 @@ func UploadVideo(c *gin.Context) {
 	var video models.Video
 	err = config.Conf.DB.Transaction(func(tx *gorm.DB) error {
 		video = models.Video{
-			VideoID:  newFileName,
 			UserName: user.Username,
-			FileName: file.Filename,
-			FilePath: filePathAbs,
+			Title:    title,
+			FilePath: filePath,
 			Status:   "uploaded",
 		}
 		return tx.Create(&video).Error
@@ -68,19 +86,26 @@ func UploadVideo(c *gin.Context) {
 }
 
 func GetVideo(c *gin.Context) {
-	var video models.Video
-	videoID := c.Param("id")
-
-	if config.Conf.DB.First(&video, videoID).Error != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Video not found"})
+	user, ok := checkUser(c)
+	if !ok {
 		return
 	}
 
-	// 返回相对路径
-	fileName := filepath.Base(video.FilePath)
+	var videos []models.Video
+	if err := config.Conf.DB.Where("user_id=?", user.ID).Find(&videos).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No videos found for this user"})
+		return
+	}
+
+	videoInfos := make([]gin.H, len(videos))
+	for i, video := range videos {
+		videoInfos[i] = gin.H{
+			"video_id": video.ID,
+			"title":    video.Title,
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"video":    video,
-		"view_url": "/view/" + videoID,
-		"file_url": "/uploads/" + videoID + "/" + fileName, // 通过Static路由访问
+		"videos": videoInfos,
 	})
 }

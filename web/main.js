@@ -769,7 +769,7 @@ async function main() {
         // "nike.splat",
         // location.href,
         params.get("url") || "train.splat",
-        "https://127.0.0.1/user/work/get",
+        "https://127.0.0.1:8080/user/work/get",
     );
     const req = await fetch(pathUrl, {
         mode: "cors", // no-cors, *cors, same-origin

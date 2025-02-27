@@ -77,7 +77,7 @@ func (vp *VideoProcessor) runTraining(videoPath, outputFolder string) (string, e
 		if strings.Contains(scanner.Text(), "Output folder:") {
 			parts := strings.Split(scanner.Text(), ": ")
 			if len(parts) > 1 {
-				return strings.TrimSpace(parts[1]), nil
+				return strings.TrimSpace(parts[1])[0:19], nil
 			}
 		}
 	}

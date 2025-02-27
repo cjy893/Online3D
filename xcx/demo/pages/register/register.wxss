@@ -1,0 +1,62 @@
+/* pages/register/register.wxss */
+.container {
+  padding: 20rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 97vh; /* 全屏高度，也可以根据实际需求调整 */
+  background-color: #f5f5f5; /* 浅灰色背景 */
+}
+
+.form-container {
+  margin-bottom: 70%; /* 调整Form container位置 */
+  width: 85%;
+  background-color: #fff;
+  border-radius: 10rpx;
+  padding: 40rpx;
+  box-shadow: 0 0 10rpx rgba(0, 0, 0, 0.1);
+}
+
+.form-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 30rpx;
+}
+
+.form-item text {
+  width: 120rpx; /* 调整文本的宽度 */
+  text-align: left;
+  font-size: 32rpx;
+  color: #333;
+}
+
+.form-item input {
+  flex: 1;
+  padding: 10rpx;
+  border: 1px solid #ccc;
+  border-radius: 5rpx;
+  font-size: 32rpx;
+}
+
+
+.register-btn {
+  width: 100%;
+  background-color: #4caf50; /* 注册按钮颜色与登录一致 */
+  color: #fff;
+  font-size: 36rpx;
+  border-radius: 10rpx;
+  padding: 20rpx;
+  margin-top: 20rpx;
+}
+
+.login-link, .register-link {
+  text-align: center;
+  margin-top: 20rpx;
+  font-size: 30rpx;
+  color: #999;
+}
+
+.login-link text, .register-link text{
+  color: #2196f3; /* 链接颜色 */
+}

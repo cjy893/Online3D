@@ -1,0 +1,9 @@
+/* pages/getwork/getwork.wxss */
+.container{
+    display: flex;
+    justify-content: center;
+    height: 100vh;
+  }
+  image,vedio{
+    width: 95%;
+  }

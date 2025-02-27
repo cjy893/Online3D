@@ -1,106 +1,59 @@
 package main
 
 import (
-	"bufio"
-	"fmt"
+	"myapp/config"
+	"myapp/router"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
-	"sync"
+	"os/signal"
+	"syscall"
+
+	"github.com/sirupsen/logrus"
 )
 
-// find the shell output with the storage path
-func LineContainsPrefix(line, prefix string) bool {
-	return len(line) >= len(prefix) && prefix == line[:len(prefix)]
-}
-
 func main() {
-	trainerPath := "C:/Users/Administrator/Online3D/3DGS/gaussian-splatting/train_video.py"
+	config.LoadConfig()
 
-	cmd := exec.Command("python3", trainerPath)
-	cmd.Env = append(os.Environ(), "PYTHONPATH=C:/Users/Administrator/Online3D/3DGS/gaussian-splatting/envs/gaussian_splatting")
-	err := os.Chdir(filepath.Dir(trainerPath))
-	if err != nil {
-		fmt.Println("Error changing directory:", err)
-		return
+	// 校验必要配置
+	if config.Conf.ServerPort == "" {
+		logrus.Fatal("服务端口配置缺失")
 	}
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		fmt.Println("Error creating stdout pipe:", err)
-		return
-	}
-
-	if err := cmd.Start(); err != nil {
-		fmt.Println("Error starting command:", err)
-		return
-	}
-
-	fmt.Println("Training started. Waiting for completion...")
-
-	var indexPath string
-	var wg sync.WaitGroup
-	wg.Add(1)
-	done := make(chan bool)
-	go func() {
-		defer wg.Done()
-		prefix := "Output folder:"
-		stdOutScanner := bufio.NewScanner(stdout)
-		for stdOutScanner.Scan() {
-			if LineContainsPrefix(stdOutScanner.Text(), prefix) {
-				line := stdOutScanner.Text()
-				first := strings.Index(line, "./output/")
-				if first == -1 {
-					fmt.Println("Output folder find error")
-					return
-				}
-				var builder strings.Builder
-				builder.Grow(19)
-				builder.WriteString(line[first : first+19])
-				indexPath = builder.String()
+	defer func() {
+		if config.Conf.DB != nil {
+			sqlDB, err := config.Conf.DB.DB()
+			if err != nil {
+				logrus.Errorf("fail to get the underlying database connection: %v", err)
+				return
 			}
-			fmt.Println(stdOutScanner.Text())
+			if err := sqlDB.Close(); err != nil {
+				logrus.Errorf("fail to close the database: %v", err)
+			}
 		}
-		done <- true
 	}()
 
+	// 初始化路由
+	router := router.RouterConfig()
+	serverAddress := ":" + config.Conf.ServerPort
+
+	// 使用错误通道处理服务启动失败
+	errChan := make(chan error)
 	go func() {
-		wg.Wait()
-		if err := cmd.Wait(); err != nil {
-			fmt.Println("Command finished with error:", err)
-			done <- false
-		} else {
-			fmt.Println("Training completed successfully")
+		if err := router.Run(serverAddress); err != nil {
+			logrus.Errorf("fail to run the server: %v", err)
+			errChan <- err
 		}
 	}()
 
-	success := <-done
-	if success {
-		fmt.Println("Training completed successfully")
-	} else {
-		fmt.Println("Training finished without expected output")
+	// 信号监听
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	// 等待终止信号或启动错误
+	select {
+	case <-quit:
+		logrus.Info("closing server...")
+	case err := <-errChan:
+		logrus.Errorf("server shut down with error: %v", err)
 	}
 
-	indexPathAbs, err := filepath.Abs(indexPath)
-	if err != nil {
-		fmt.Println("Error to convert path:", err)
-		return
-	}
-
-	viewerPath := "C:/Users/Administrator/Online3D/3DGS/gaussian-splatting/SIBR_viewer.py"
-	err = os.Chdir(filepath.Dir(viewerPath))
-	if err != nil {
-		fmt.Println("Error changing directory:", err)
-		return
-	}
-
-	cmd = exec.Command("python3", filepath.Base(viewerPath), indexPathAbs)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		fmt.Println("Error:", err)
-		fmt.Println("Output:", string(output))
-		return
-	}
-	fmt.Println("viewer loading complete")
+	logrus.Info("server exit")
 }

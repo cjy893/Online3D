@@ -1,19 +1,15 @@
 package handlers
 
 import (
-	"log"
 	"myapp/config"
 	"myapp/models"
-	"myapp/services"
 	"net/http"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 func UploadVideo(c *gin.Context) {
@@ -65,53 +61,10 @@ func UploadVideo(c *gin.Context) {
 		return
 	}
 
-	// 异步处理视频（不包裹在事务中）
-	go processVideo(video.ID, user.Username, video.FileName)
-
 	c.JSON(http.StatusCreated, gin.H{
 		"message":  "Video uploaded successfully",
 		"video_id": video.ID,
 	})
-}
-
-func processVideo(videoID uint, userName, fileName string) {
-	// 短事务1：标记为"processing"（快速提交）
-	var video models.Video
-	err := config.Conf.DB.Transaction(func(tx *gorm.DB) error {
-		// 锁定记录并更新状态
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			First(&video, videoID).Error; err != nil {
-			return err
-		}
-		return tx.Model(&video).Update("status", "processing").Error
-	})
-	if err != nil {
-		log.Printf("Failed to start processing video %d: %v", videoID, err)
-		return
-	}
-
-	// 执行耗时操作（不在事务中）
-	processor, err := services.NewVideoProcessor()
-	if err != nil {
-		updateVideoStatus(videoID, "failed", err.Error(), time.Now())
-		return
-	}
-
-	startTime := time.Now()
-	if err := processor.Process(&video, processor); err != nil {
-		updateVideoStatus(videoID, "failed", err.Error(), startTime)
-		return
-	} else {
-		updateVideoStatus(videoID, "completed", "", startTime)
-		_ = config.Conf.DB.Transaction(func(tx *gorm.DB) error {
-			work := models.Work{
-				UserName: userName,
-				FileName: fileName,
-				FilePath: processor.OutputFolder,
-			}
-			return tx.Create(&work).Error
-		})
-	}
 }
 
 func GetVideo(c *gin.Context) {
@@ -128,22 +81,6 @@ func GetVideo(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"video":    video,
 		"view_url": "/view/" + videoID,
-		"file_url": "/uploads/" + fileName, // 通过Static路由访问
+		"file_url": "/uploads/" + videoID + "/" + fileName, // 通过Static路由访问
 	})
-}
-
-func updateVideoStatus(videoID uint, status, errorLog string, startTime time.Time) {
-	err := config.Conf.DB.Transaction(func(tx *gorm.DB) error {
-		updates := map[string]interface{}{"status": status}
-		if status == "completed" {
-			updates["process_time"] = int(time.Since(startTime).Seconds())
-		}
-		if errorLog != "" {
-			updates["error_log"] = errorLog
-		}
-		return tx.Model(&models.Video{}).Where("id = ?", videoID).Updates(updates).Error
-	})
-	if err != nil {
-		log.Printf("Failed to update video %d status: %v", videoID, err)
-	}
 }

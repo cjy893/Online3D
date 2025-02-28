@@ -11,12 +11,14 @@ import (
 )
 
 func main() {
+	// 加载配置
 	config.LoadConfig()
 
 	// 校验必要配置
 	if config.Conf.ServerPort == "" {
 		logrus.Fatal("服务端口配置缺失")
 	}
+	// 优雅关闭数据库连接
 	defer func() {
 		if config.Conf.DB != nil {
 			sqlDB, err := config.Conf.DB.DB()

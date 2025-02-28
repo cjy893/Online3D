@@ -85,7 +85,7 @@ func UploadVideo(c *gin.Context) {
 	})
 }
 
-func GetVideo(c *gin.Context) {
+func ShowVideo(c *gin.Context) {
 	user, ok := checkUser(c)
 	if !ok {
 		return

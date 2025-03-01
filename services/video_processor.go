@@ -20,12 +20,13 @@ type VideoProcessor struct {
 	OutputFolder      string
 	PythonInterpreter string
 	FPS               int
+	Iterations        string
 }
 
 // NewVideoProcessor 创建并初始化一个新的VideoProcessor实例。
 // 该函数无需参数。
 // 返回值是一个指向VideoProcessor实例的指针，以及一个错误值（如果有）。
-func NewVideoProcessor() (*VideoProcessor, error) {
+func NewVideoProcessor(iterations string) (*VideoProcessor, error) {
 	// 获取项目根目录的路径。
 	projectRoot := utils.GetProjectRoot()
 
@@ -44,6 +45,7 @@ func NewVideoProcessor() (*VideoProcessor, error) {
 		OutputFolder:      "",
 		PythonInterpreter: "C:/Users/Administrator/anaconda3/envs/gaussian_splatting/python.exe",
 		FPS:               2,
+		Iterations:        iterations,
 	}, nil
 }
 
@@ -84,7 +86,7 @@ func (vp *VideoProcessor) runTraining(videoPath, outputFolder string) (string, e
 	}
 
 	// 构建运行训练脚本的命令。
-	cmd := exec.Command(vp.PythonInterpreter, vp.TrainerPath, "--video", videoPath)
+	cmd := exec.Command(vp.PythonInterpreter, vp.TrainerPath, "--video", videoPath, "--iterations", vp.Iterations)
 
 	// 添加PYTHONPATH环境变量以确保脚本能找到所需的模块。
 	cmd.Env = append(os.Environ(), fmt.Sprintf("PYTHONPATH=%s", vp.PythonPath))

@@ -10,10 +10,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -25,9 +25,10 @@ func InitModel(c *gin.Context) {
 	// 获取URL参数
 	videoID := c.Param("id")
 	fileName := c.Param("file_name")
+	iterations := c.Param("iterations")
 
 	// 将视频ID转换为uint64类型
-	uVideoID, err := strconv.ParseUint(videoID, 10, 64)
+	uVideoID, err := strconv.ParseUint(videoID, 10, 32)
 	if err != nil {
 		// 如果转换失败，返回错误响应
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -38,7 +39,7 @@ func InitModel(c *gin.Context) {
 
 	// 找到video信息
 	var video models.Video
-	if err := config.Conf.DB.Where("id=?", uint(uVideoID)).First(&video).Error; err != nil {
+	if err := config.Conf.DB.Where("id=?", uVideoID).First(&video).Error; err != nil {
 		// 如果找不到视频，返回错误响应
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": "Video Not Found",
@@ -50,9 +51,10 @@ func InitModel(c *gin.Context) {
 	var work models.Work
 	err = config.Conf.DB.Transaction(func(tx *gorm.DB) error {
 		work = models.Work{
-			UserName: video.UserName,
-			FileName: fileName,
-			Status:   "processing",
+			UserName:   video.UserName,
+			FileName:   fileName,
+			Status:     "processing",
+			Iterations: iterations,
 		}
 		return tx.Create(&work).Error
 	})
@@ -66,7 +68,7 @@ func InitModel(c *gin.Context) {
 	}
 
 	// 执行training
-	processor, err := services.NewVideoProcessor()
+	processor, err := services.NewVideoProcessor(iterations)
 	if err != nil {
 		// 如果处理失败，更新work状态并返回错误响应
 		if updateErr := updateWorkStatus(work.ID, "process failed", "", err.Error(), time.Now()); updateErr != nil {
@@ -173,11 +175,18 @@ func updateWorkStatus(workID uint, status, outputFolder, errorLog string, startT
 // 参数:
 //
 //	c *gin.Context - Gin框架的上下文，用于处理HTTP请求和响应
-func GetWorkPath(c *gin.Context) {
+func GetWork(c *gin.Context) {
 	// 初始化一个Work结构体实例
 	var work models.Work
 	// 从请求参数中获取作品ID
-	workID := c.Param("id")
+	workID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		//如果id解析失败，返回400错误
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "id is not a number",
+		})
+		return
+	}
 
 	// 尝试从数据库中获取作品信息
 	if config.Conf.DB.First(&work, workID).Error != nil {
@@ -189,11 +198,11 @@ func GetWorkPath(c *gin.Context) {
 	}
 
 	// 尝试寻找.splat文件
-	if filePath, err := findSplatPath(work.FilePath); err == nil {
-		// 如果找到.splat文件，返回文件路径
-		c.JSON(http.StatusOK, gin.H{
-			"filePath": filePath,
-		})
+	baseFilePath := filepath.Join(work.FilePath, "point_cloud", "iteration_"+work.Iterations)
+	splatPath := filepath.Join(baseFilePath, "point_cloud.splat")
+	if _, err := os.Stat(splatPath); err == nil {
+		//如果找到.splat文件，返回文件
+		c.File(splatPath)
 		return
 	}
 
@@ -203,8 +212,8 @@ func GetWorkPath(c *gin.Context) {
 	})
 
 	// 寻找.ply文件
-	filepath, err := findPlyPath(work.FilePath)
-	if err != nil {
+	plyPath := filepath.Join(baseFilePath, "point_cloud.ply")
+	if _, err := os.Stat(plyPath); err != nil {
 		// 如果.ply文件不存在，返回404错误
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": "Ply File Not Found",
@@ -213,7 +222,7 @@ func GetWorkPath(c *gin.Context) {
 	}
 
 	// 将.ply文件转换为.splat文件
-	splatPath, err := splat(filepath)
+	splatPath, err = splat(plyPath)
 	if err != nil {
 		// 如果转换过程中出现错误，返回400错误
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -222,10 +231,8 @@ func GetWorkPath(c *gin.Context) {
 		return
 	}
 
-	// 返回转换后的.splat文件路径
-	c.JSON(http.StatusOK, gin.H{
-		"filePath": splatPath,
-	})
+	// 返回转换后的.splat文件
+	c.File(splatPath)
 }
 
 // splat函数负责将给定的工作路径下的数据转换为"splat"格式。
@@ -242,62 +249,28 @@ func GetWorkPath(c *gin.Context) {
 //	string类型，表示转换后的"splat"文件的绝对路径。
 //	error类型，如果转换过程中发生错误，则返回该错误。
 func splat(workPath string) (string, error) {
-	// 生成唯一的"splat"名称。
-	splatName := uuid.New().String()
-	// 构建"splat"目录的路径。
-	splatDirPath := filepath.Join(config.Conf.SplatPath, splatName)
-	// 构建".splat"文件的路径。
-	splatPath := filepath.Join(splatDirPath, ".splat")
-	// 获取".splat"文件的绝对路径。
-	splatPathAbs, _ := filepath.Abs(splatPath)
-	// 尝试创建"splat"目录，如果失败则返回错误。
-	if err := os.Mkdir(splatDirPath, 0755); err != nil {
-		return "", err
+	// 尝试在指定的工作路径中找到.ply文件。
+	plyPath := filepath.Join(workPath, "point_cloud.splat")
+	if _, err := os.Stat(plyPath); err != nil {
+		return "", fmt.Errorf("fail to find .ply file: %v", err)
 	}
 
-	// 创建一个命令以执行Python脚本进行数据转换。
-	// 这里指定Python可执行文件路径和脚本路径，以及输入和输出路径。
-	cmd := exec.Command("C:/Users/Administrator/anaconda3/envs/gaussian_splatting/python.exe", "web/convert.py", workPath, "--output", splatPathAbs)
-	// 设置环境变量以确保Python脚本可以找到所需的库。
+	// 生成.splat文件的路径，通过替换.ply文件的扩展名实现。
+	splatPath := strings.Split(plyPath, ".")[0]
+	splatPath += ".splat"
+
+	// 构建执行Python转换脚本的命令。
+	// 使用VideoProcessor实例中指定的Python解释器。
+	cmd := exec.Command(config.Conf.PythonPath+"/Python.exe", "web/convert.py", plyPath, "--output", splatPath)
+	// 添加环境变量以确保Python脚本可以找到所需的库。
 	cmd.Env = append(os.Environ(), fmt.Sprintf("PYTHONPATH=%s", "3DGS/gaussian-splatting/envs/gaussian_splatting"))
-	// 执行命令并检查是否有错误发生。如果有错误，则返回一个格式化的错误信息。
+
+	// 执行命令并检查是否有错误发生。
 	if err := cmd.Run(); err != nil {
+		// 如果执行命令时出错，返回错误。
 		return "", fmt.Errorf("fail to convert to splat file:%w", err)
 	}
-	// 返回转换后的"splat"文件的绝对路径。
-	return splatPathAbs, nil
-}
 
-func findPlyPath(filePath string) (string, error) {
-	if _, err := os.Stat(filePath + "/point_cloud/iteration_30000/point_cloud.ply"); err != nil {
-		if _, err = os.Stat(filePath + "/point_cloud/iteration_7000/point_cloud.ply"); err != nil {
-			if _, err = os.Stat(filePath + "input.ply"); err != nil {
-				return "", err
-			} else {
-				filePath += "input.ply"
-			}
-		} else {
-			filePath += "/point_cloud/iteration_7000/point_cloud.ply"
-		}
-	} else {
-		filePath += "/point_cloud/iteration_7000/point_cloud.ply"
-	}
-	return filePath, nil
-}
-
-func findSplatPath(filePath string) (string, error) {
-	if _, err := os.Stat(filePath + "/point_cloud/iteration_30000/point_cloud.splat"); err != nil {
-		if _, err = os.Stat(filePath + "/point_cloud/iteration_7000/point_cloud.splat"); err != nil {
-			if _, err = os.Stat(filePath + "input.splat"); err != nil {
-				return "", err
-			} else {
-				filePath += "input.splat"
-			}
-		} else {
-			filePath += "/point_cloud/iteration_7000/point_cloud.splat"
-		}
-	} else {
-		filePath += "/point_cloud/iteration_7000/point_cloud.splat"
-	}
-	return filePath, nil
+	// 如果一切顺利，返回nil表示没有发生错误。
+	return splatPath, nil
 }

@@ -10,4 +10,5 @@ type Work struct {
 	Status      string
 	ProcessTime string
 	ErrorLog    string
+	Iterations  string
 }

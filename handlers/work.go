@@ -24,8 +24,17 @@ import (
 func InitModel(c *gin.Context) {
 	// 获取URL参数
 	videoID := c.Param("id")
-	fileName := c.Param("file_name")
-	iterations := c.Param("iterations")
+
+	//获取初始化模型信息
+	var videoInfo struct {
+		FileName   string `json:"fileName"`
+		Iterations string `json:"iterations"`
+	}
+	if err := c.ShouldBindJSON(&videoInfo); err != nil {
+		// 如果解析JSON失败，返回错误响应
+		c.JSON(http.StatusBadRequest, gin.H{"error": err})
+		return
+	}
 
 	// 将视频ID转换为uint64类型
 	uVideoID, err := strconv.ParseUint(videoID, 10, 32)
@@ -52,9 +61,9 @@ func InitModel(c *gin.Context) {
 	err = config.Conf.DB.Transaction(func(tx *gorm.DB) error {
 		work = models.Work{
 			UserName:   video.UserName,
-			FileName:   fileName,
+			FileName:   videoInfo.FileName,
 			Status:     "processing",
-			Iterations: iterations,
+			Iterations: videoInfo.Iterations,
 		}
 		return tx.Create(&work).Error
 	})
@@ -68,7 +77,7 @@ func InitModel(c *gin.Context) {
 	}
 
 	// 执行training
-	processor, err := services.NewVideoProcessor(iterations)
+	processor, err := services.NewVideoProcessor(videoInfo.Iterations)
 	if err != nil {
 		// 如果处理失败，更新work状态并返回错误响应
 		if updateErr := updateWorkStatus(work.ID, "process failed", "", err.Error(), time.Now()); updateErr != nil {

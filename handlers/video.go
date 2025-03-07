@@ -123,7 +123,10 @@ func ShowVideo(c *gin.Context) {
 		return
 	}
 
-	var videoInfos []gin.H
+	var videoInfos []struct {
+		VideoID uint   `json:"video_id"`
+		Title   string `json:"title"`
+	}
 	// 数据库查询操作：获取当前用户的视频ID和标题
 	if err := config.Conf.DB.Model(&models.Video{}).
 		Where("user_id = ?", user.ID).
@@ -131,6 +134,11 @@ func ShowVideo(c *gin.Context) {
 		Scan(&videoInfos).Error; err != nil {
 		// 数据库查询错误处理
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "视频查询失败"})
+		return
+	}
+
+	if len(videoInfos) == 0 {
+		c.JSON(http.StatusOK, gin.H{"error": "未找到视频"})
 		return
 	}
 

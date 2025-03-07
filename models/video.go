@@ -9,5 +9,6 @@ type Video struct {
 	Status   string `gorm:"not null"`
 	ErrorLog string
 	UserID   uint
+	User     User
 	Works    []Work
 }

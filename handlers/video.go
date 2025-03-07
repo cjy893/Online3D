@@ -108,38 +108,32 @@ func UploadVideo(c *gin.Context) {
 	})
 }
 
-// ShowVideo 显示用户视频信息
-// 该函数首先检查当前上下文中的用户身份，如果用户身份验证失败，则中止执行。
-// 接着，从数据库中查询属于该用户的所有视频信息，如果查询失败或未找到视频，则返回错误信息。
-// 最后，将视频信息整理为一个切片，其中每个元素包含视频ID和标题，然后以JSON格式返回给客户端。
+// ShowVideo 处理用户视频列表请求，验证用户身份后查询数据库并返回视频信息
+// 参数说明:
+//   - c: *gin.Context Gin框架上下文对象，用于处理HTTP请求和响应
+//
+// 功能流程:
+//   - 执行用户身份验证
+//   - 查询当前用户关联的视频数据
+//   - 返回标准化JSON响应
 func ShowVideo(c *gin.Context) {
-	// 检查并获取用户信息
+	// 用户身份验证检查
 	user, ok := checkUser(c)
 	if !ok {
 		return
 	}
 
-	// 初始化一个视频切片，用于存储查询到的视频信息
-	var videos []models.Video
-	// 查询数据库中属于当前用户的所有视频
-	if err := config.Conf.DB.Where("user_id=?", user.ID).Find(&videos).Error; err != nil {
-		// 如果查询失败，返回404错误信息
-		c.JSON(http.StatusNotFound, gin.H{"error": "No videos found for this user"})
+	var videoInfos []gin.H
+	// 数据库查询操作：获取当前用户的视频ID和标题
+	if err := config.Conf.DB.Model(&models.Video{}).
+		Where("user_id = ?", user.ID).
+		Select("id as video_id, title").
+		Scan(&videoInfos).Error; err != nil {
+		// 数据库查询错误处理
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "视频查询失败"})
 		return
 	}
 
-	// 初始化一个gin.H切片，用于存储视频信息的摘要
-	videoInfos := make([]gin.H, len(videos))
-	// 遍历视频信息，提取并存储视频ID和标题
-	for i, video := range videos {
-		videoInfos[i] = gin.H{
-			"video_id": video.ID,
-			"title":    video.Title,
-		}
-	}
-
-	// 返回视频信息的JSON响应
-	c.JSON(http.StatusOK, gin.H{
-		"videos": videoInfos,
-	})
+	// 成功返回视频数据
+	c.JSON(http.StatusOK, gin.H{"videos": videoInfos})
 }

@@ -137,11 +137,18 @@ func ShowVideo(c *gin.Context) {
 		return
 	}
 
+	//如果没有视频记录，返回空数组
 	if len(videoInfos) == 0 {
-		c.JSON(http.StatusOK, gin.H{"error": "未找到视频"})
+		c.JSON(http.StatusOK, gin.H{
+			"message": "当前没有视频记录",
+			"videos":  []interface{}{},
+		})
 		return
 	}
 
 	// 成功返回视频数据
-	c.JSON(http.StatusOK, gin.H{"videos": videoInfos})
+	c.JSON(http.StatusOK, gin.H{
+		"message": "视频查询成功",
+		"videos":  videoInfos,
+	})
 }

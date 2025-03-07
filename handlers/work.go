@@ -27,7 +27,7 @@ func InitModel(c *gin.Context) {
 
 	//获取初始化模型信息
 	var videoInfo struct {
-		FileName   string `json:"fileName"`
+		WorkName   string `json:"workName"`
 		Iterations string `json:"iterations"`
 	}
 	if err := c.ShouldBindJSON(&videoInfo); err != nil {
@@ -60,8 +60,9 @@ func InitModel(c *gin.Context) {
 	var work models.Work
 	err = config.Conf.DB.Transaction(func(tx *gorm.DB) error {
 		work = models.Work{
-			UserName:   video.UserName,
-			FileName:   videoInfo.FileName,
+			UserID:     video.UserID,
+			VideoID:    video.ID,
+			WorkName:   videoInfo.WorkName,
 			Status:     "processing",
 			Iterations: videoInfo.Iterations,
 		}

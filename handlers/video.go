@@ -89,7 +89,7 @@ func UploadVideo(c *gin.Context) {
 	var video models.Video
 	err = config.Conf.DB.Transaction(func(tx *gorm.DB) error {
 		video = models.Video{
-			UserName: user.Username,
+			UserID:   user.ID,
 			Title:    title,
 			FilePath: filePath,
 			Status:   "uploaded",

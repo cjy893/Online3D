@@ -11,5 +11,7 @@ type Work struct {
 	ErrorLog    string
 	Iterations  string
 	UserID      uint
+	User        User
 	VideoID     uint
+	Video       Video
 }

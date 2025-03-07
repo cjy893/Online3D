@@ -4,11 +4,12 @@ import "gorm.io/gorm"
 
 type Work struct {
 	gorm.Model
-	UserName    string
-	FileName    string
+	WorkName    string
 	FilePath    string
 	Status      string
 	ProcessTime string
 	ErrorLog    string
 	Iterations  string
+	UserID      uint
+	VideoID     uint
 }

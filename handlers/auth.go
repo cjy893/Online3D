@@ -30,7 +30,7 @@ func Register(c *gin.Context) {
 
 	// 检查用户名是否已存在（使用事务内的查询）
 	var existing models.User
-	if err := tx.Where("username = ?", user.Username).First(&existing).Error; err == nil {
+	if err := tx.Where("username = ?", user.Account).First(&existing).Error; err == nil {
 		tx.Rollback()
 		c.JSON(http.StatusConflict, gin.H{"error": "用户名已存在"})
 		return

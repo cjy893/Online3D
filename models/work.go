@@ -4,9 +4,9 @@ import "gorm.io/gorm"
 
 type Work struct {
 	gorm.Model
-	WorkName    string
-	FilePath    string
-	Status      string
+	WorkName    string `gorm:"not null"`
+	FilePath    string `gorm:"not null"`
+	Status      string `gorm:"not null"`
 	ProcessTime string
 	ErrorLog    string
 	Iterations  string

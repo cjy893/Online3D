@@ -9,45 +9,11 @@
       <change afterPath="$PROJECT_DIR$/gaussian-splatting/resize_images.py" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/gaussian-splatting/train_images.py" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/gaussian-splatting/train_video.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/gaussian-splatting" beforeDir="false" afterPath="$PROJECT_DIR$/gaussian-splatting" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/gaussian-splatting/convert.py" beforeDir="false" afterPath="$PROJECT_DIR$/gaussian-splatting/convert.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/gaussian-splatting/submodules/diff-gaussian-rasterization" beforeDir="false" afterPath="$PROJECT_DIR$/gaussian-splatting/submodules/diff-gaussian-rasterization" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/gaussian-splatting/submodules/diff-gaussian-rasterization/cuda_rasterizer/forward.cu" beforeDir="false" afterPath="$PROJECT_DIR$/gaussian-splatting/submodules/diff-gaussian-rasterization/cuda_rasterizer/forward.cu" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/gaussian-splatting/train.py" beforeDir="false" afterPath="$PROJECT_DIR$/gaussian-splatting/train.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../handlers/work.go" beforeDir="false" afterPath="$PROJECT_DIR$/../handlers/work.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../models/work.go" beforeDir="false" afterPath="$PROJECT_DIR$/../models/work.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../router/router.go" beforeDir="false" afterPath="$PROJECT_DIR$/../router/router.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/a872241b-c9b9-42fc-9d60-a7df7a381eac.mp4" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/distorted/database.db" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/distorted/sparse/0/cameras.bin" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/distorted/sparse/0/images.bin" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/distorted/sparse/0/points3D.bin" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/distorted/sparse/0/project.ini" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/images/0001.jpg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/images/0002.jpg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/images/0003.jpg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/images/0004.jpg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/images/0005.jpg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/images/0006.jpg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/images/0007.jpg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/images/0008.jpg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/input/0001.jpg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/input/0002.jpg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/input/0003.jpg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/input/0004.jpg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/input/0005.jpg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/input/0006.jpg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/input/0007.jpg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/input/0008.jpg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/run-colmap-geometric.sh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/run-colmap-photometric.sh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/sparse/0/cameras.bin" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/sparse/0/images.bin" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/sparse/0/points3D.bin" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/stereo/fusion.cfg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../uploads/a872241b-c9b9-42fc-9d60-a7df7a381eac/stereo/patch-match.cfg" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

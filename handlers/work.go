@@ -22,11 +22,9 @@ import (
 //
 //	c *gin.Context: Gin框架的上下文对象，用于处理HTTP请求和响应
 func InitModel(c *gin.Context) {
-	// 获取URL参数
-	videoID := c.Param("id")
-
 	//获取初始化模型信息
 	var videoInfo struct {
+		VideoID    uint   `json:"id"`
 		WorkName   string `json:"workName"`
 		Iterations string `json:"iterations"`
 	}
@@ -36,19 +34,9 @@ func InitModel(c *gin.Context) {
 		return
 	}
 
-	// 将视频ID转换为uint64类型
-	uVideoID, err := strconv.ParseUint(videoID, 10, 32)
-	if err != nil {
-		// 如果转换失败，返回错误响应
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "id is not a number",
-		})
-		return
-	}
-
 	// 找到video信息
 	var video models.Video
-	if err := config.Conf.DB.Where("id=?", uVideoID).First(&video).Error; err != nil {
+	if err := config.Conf.DB.Where("id=?", videoInfo.VideoID).First(&video).Error; err != nil {
 		// 如果找不到视频，返回错误响应
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": "Video Not Found",
@@ -58,7 +46,7 @@ func InitModel(c *gin.Context) {
 
 	// 创建work记录
 	var work models.Work
-	err = config.Conf.DB.Transaction(func(tx *gorm.DB) error {
+	err := config.Conf.DB.Transaction(func(tx *gorm.DB) error {
 		work = models.Work{
 			UserID:     video.UserID,
 			VideoID:    video.ID,
@@ -72,7 +60,7 @@ func InitModel(c *gin.Context) {
 		// 如果创建work记录失败，返回错误响应
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"init error": "Failed to initialize video model",
-			"videoid":    uVideoID,
+			"videoid":    videoInfo.VideoID,
 		})
 		return
 	}

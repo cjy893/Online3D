@@ -24,7 +24,7 @@ func RouterConfig() *gin.Engine {
 	{
 		// 需要身份验证的路由规则。
 		auth.POST("/video/upload", handlers.UploadVideo)
-		auth.POST("/work/init/:id", handlers.InitModel)
+		auth.POST("/work/init", handlers.InitModel)
 		auth.GET("/video/", handlers.ShowVideo)
 		auth.GET("/work/get/:id", handlers.GetWork)
 		auth.GET("/work/view", handlers.GetViwer)

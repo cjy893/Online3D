@@ -126,6 +126,13 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
+	var user models.User
+	if err := config.Conf.DB.Where("id = ?", userID).First(&user).Error; err != nil {
+		// 如果查询用户失败，返回内部服务器错误
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询用户失败"})
+		return
+	}
+
 	// 开启事务
 	tx := config.Conf.DB.Begin()
 	defer func() {
@@ -141,13 +148,6 @@ func DeleteUser(c *gin.Context) {
 		// 如果删除过程中发生错误，回滚事务并返回错误信息
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除用户失败"})
-		return
-	}
-
-	if result.RowsAffected == 0 {
-		// 如果没有受影响的行，说明用户不存在，回滚事务并返回错误信息
-		tx.Rollback()
-		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
 		return
 	}
 

@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"fmt"
 	"myapp/config"
+	"myapp/database"
 	"myapp/models"
 	"net/http"
 	"os"
@@ -9,7 +11,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 )
 
 // checkUser 检查并返回当前请求的用户信息
@@ -41,67 +42,77 @@ func checkUser(c *gin.Context) (*models.User, bool) {
 	// 成功获取用户信息，返回用户信息和成功标志
 	return &user, true
 }
-
-// UploadVideo 上传视频处理函数
-// 该函数负责处理视频上传请求，包括验证用户身份、接收上传文件、保存文件、
-// 以及在数据库中创建视频记录
 func UploadVideo(c *gin.Context) {
-	// 验证用户身份
 	user, ok := checkUser(c)
 	if !ok {
 		return
 	}
 
-	// 接收上传文件
 	file, err := c.FormFile("video")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "文件上传失败"})
 		return
 	}
 
-	// 获取视频标题
 	title := c.PostForm("title")
 	if title == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "标题不能为空"})
 		return
 	}
 
-	// 生成唯一文件名
 	ext := filepath.Ext(file.Filename)
-	dirUUID := uuid.New().String()
 	fileUUID := uuid.New().String()
-	fileDirPath := filepath.Join(config.Conf.UploadPath, dirUUID)
-	filePath := filepath.Join(fileDirPath, fileUUID+ext)
+	filePath := filepath.Join("temp", fileUUID+ext)
 
-	// 创建存储目录
-	if err := os.MkdirAll(fileDirPath, 0755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法创建目录"})
-		return
-	}
-
-	// 保存文件
 	if err := c.SaveUploadedFile(file, filePath); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "文件保存失败"})
 		return
 	}
+	defer os.Remove("temp")
 
-	// 创建视频记录（使用短事务）
-	var video models.Video
-	err = config.Conf.DB.Transaction(func(tx *gorm.DB) error {
-		video = models.Video{
-			UserID:   user.ID,
-			Title:    title,
-			FilePath: filePath,
-			Status:   "uploaded",
+	tx := config.Conf.DB.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
 		}
-		return tx.Create(&video).Error
-	})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create video record"})
+	}()
+
+	var video = models.Video{
+		UserID: user.ID,
+		Title:  title,
+	}
+	if err := tx.Create(&video).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("fail to upload video:%v", err),
+		})
 		return
 	}
 
-	// 返回成功响应
+	fileReader, err := os.Open(filePath)
+	if err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("fail to open file:%v", err),
+		})
+		return
+	}
+	defer fileReader.Close()
+	if err := database.StoreInBucket(fmt.Sprintf("%d", video.ID), "video", fileReader); err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("fail to upload video:%v", err),
+		})
+		return
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("fail to commit :%v", err),
+		})
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
 		"message":  "Video uploaded successfully",
 		"video_id": video.ID,

@@ -30,7 +30,7 @@ func Register(c *gin.Context) {
 
 	// 检查用户名是否已存在（使用事务内的查询）
 	var existing models.User
-	if err := tx.Where("username = ?", user.Account).First(&existing).Error; err == nil {
+	if err := tx.Where("account = ?", user.Account).First(&existing).Error; err == nil {
 		tx.Rollback()
 		c.JSON(http.StatusConflict, gin.H{"error": "用户名已存在"})
 		return
@@ -89,7 +89,7 @@ func Login(c *gin.Context) {
 	// 定义用户变量，用于存储从数据库中查询到的用户信息
 	var user models.User
 	// 根据提供的标识符（用户名或邮箱）查询用户信息
-	if err := config.Conf.DB.Where("username = ? OR email = ?", credentials.Identifier, credentials.Identifier).First(&user).Error; err != nil {
+	if err := config.Conf.DB.Where("account = ? OR email = ?", credentials.Identifier, credentials.Identifier).First(&user).Error; err != nil {
 		// 如果查询失败或用户不存在，返回401错误响应
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名/邮箱错误"})
 		return

@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"myapp/config"
 	"net/http"
 	"os"
 
@@ -10,7 +9,7 @@ import (
 )
 
 func GetViwer(c *gin.Context) {
-	filePath := config.Conf.ViewerPath + "index.html"
+	filePath := "index.html"
 
 	content, err := os.ReadFile(filePath)
 	if err != nil {

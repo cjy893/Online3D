@@ -227,3 +227,40 @@ func GetWork(c *gin.Context) {
 	defer os.RemoveAll(filepath.Dir(splatPath))
 	c.File(splatPath)
 }
+
+func ShowWork(c *gin.Context) {
+	user, ok := checkUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证的用户"})
+		return
+	}
+
+	var workInfos []struct {
+		WorkID   uint   `json:"work_id"`
+		WorkName string `json:"workName"`
+		Status   string `json:"status"`
+	}
+
+	if err := config.Conf.DB.Model(&models.Work{}).
+		Where("user_id=?", user.ID).
+		Select("id as work_id, work_name, status").
+		Scan(&workInfos).Error; err != nil {
+		// 如果数据库查询失败，返回错误响应
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "作品查询失败"})
+		return
+	}
+
+	if len(workInfos) == 0 {
+		// 如果没有作品记录，返回空数组
+		c.JSON(http.StatusOK, gin.H{
+			"message": "当前没有作品记录",
+			"works":   []interface{}{},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "作品查询成功",
+		"works":   workInfos,
+	})
+}

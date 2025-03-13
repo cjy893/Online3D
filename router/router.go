@@ -25,8 +25,9 @@ func RouterConfig() *gin.Engine {
 		auth.POST("/video/upload", handlers.UploadVideo)
 		auth.POST("/work/init", handlers.InitModel)
 		auth.GET("/video/", handlers.ShowVideo)
-		auth.GET("/work/get/:id", handlers.GetWork)
+		auth.GET("/work/", handlers.ShowWork)
 		auth.GET("/work/view", handlers.GetViwer)
+		auth.GET("/work/path", handlers.GetWork)
 		auth.DELETE("/:id/delete", handlers.DeleteUser)
 	}
 

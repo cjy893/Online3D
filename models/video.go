@@ -4,11 +4,11 @@ import "gorm.io/gorm"
 
 type Video struct {
 	gorm.Model
-	VideoID     string
-	UserName    string
-	FileName    string
-	FilePath    string
-	Status      string
-	ErrorLog    string
-	ProcessTime string
+	Title    string `gorm:"not null"`
+	FilePath string `gorm:"not null"`
+	Status   string `gorm:"not null"`
+	ErrorLog string
+	UserID   uint
+	User     User
+	Works    []Work
 }

@@ -1,49 +1,86 @@
 package handlers
 
 import (
-	"log"
 	"myapp/config"
 	"myapp/models"
-	"myapp/services"
 	"net/http"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
-func UploadVideo(c *gin.Context) {
-	userID, _ := c.Get("userID")
+// checkUser 检查并返回当前请求的用户信息
+// 参数:
+//
+//	c *gin.Context: Gin框架的上下文对象，用于处理HTTP请求和响应
+//
+// 返回值:
+//
+//	*models.User: 用户信息的指针，如果用户存在且验证通过
+//	bool: 表示是否成功获取到用户信息
+func checkUser(c *gin.Context) (*models.User, bool) {
+	// 尝试从上下文中获取用户ID，如果不存在，则返回未认证的用户错误
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证的用户"})
+		return nil, false
+	}
+
+	// 初始化用户模型
 	var user models.User
+
+	// 使用用户ID查询数据库中的用户信息，如果查询失败，则返回内部服务器错误
 	if err := config.Conf.DB.First(&user, userID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "未找到用户"})
+		return nil, false
+	}
+
+	// 成功获取用户信息，返回用户信息和成功标志
+	return &user, true
+}
+
+// UploadVideo 上传视频处理函数
+// 该函数负责处理视频上传请求，包括验证用户身份、接收上传文件、保存文件、
+// 以及在数据库中创建视频记录
+func UploadVideo(c *gin.Context) {
+	// 验证用户身份
+	user, ok := checkUser(c)
+	if !ok {
 		return
 	}
 
+	// 接收上传文件
 	file, err := c.FormFile("video")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "文件上传失败"})
 		return
 	}
 
+	// 获取视频标题
+	title := c.PostForm("title")
+	if title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "标题不能为空"})
+		return
+	}
+
 	// 生成唯一文件名
 	ext := filepath.Ext(file.Filename)
-	newFileName := uuid.New().String()
-	fileDirPath := filepath.Join(config.Conf.UploadPath, newFileName)
-	filePath := filepath.Join(fileDirPath, newFileName+ext)
-	filePathAbs, _ := filepath.Abs(filePath)
+	dirUUID := uuid.New().String()
+	fileUUID := uuid.New().String()
+	fileDirPath := filepath.Join(config.Conf.UploadPath, dirUUID)
+	filePath := filepath.Join(fileDirPath, fileUUID+ext)
 
+	// 创建存储目录
 	if err := os.MkdirAll(fileDirPath, 0755); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "文件上传失败"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法创建目录"})
 		return
 	}
 
 	// 保存文件
-	if err := c.SaveUploadedFile(file, filePathAbs); err != nil {
+	if err := c.SaveUploadedFile(file, filePath); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "文件保存失败"})
 		return
 	}
@@ -52,10 +89,9 @@ func UploadVideo(c *gin.Context) {
 	var video models.Video
 	err = config.Conf.DB.Transaction(func(tx *gorm.DB) error {
 		video = models.Video{
-			VideoID:  newFileName,
-			UserName: user.Username,
-			FileName: file.Filename,
-			FilePath: filePathAbs,
+			UserID:   user.ID,
+			Title:    title,
+			FilePath: filePath,
 			Status:   "uploaded",
 		}
 		return tx.Create(&video).Error
@@ -65,85 +101,54 @@ func UploadVideo(c *gin.Context) {
 		return
 	}
 
-	// 异步处理视频（不包裹在事务中）
-	go processVideo(video.ID, user.Username, video.FileName)
-
+	// 返回成功响应
 	c.JSON(http.StatusCreated, gin.H{
 		"message":  "Video uploaded successfully",
 		"video_id": video.ID,
 	})
 }
 
-func processVideo(videoID uint, userName, fileName string) {
-	// 短事务1：标记为"processing"（快速提交）
-	var video models.Video
-	err := config.Conf.DB.Transaction(func(tx *gorm.DB) error {
-		// 锁定记录并更新状态
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			First(&video, videoID).Error; err != nil {
-			return err
-		}
-		return tx.Model(&video).Update("status", "processing").Error
-	})
-	if err != nil {
-		log.Printf("Failed to start processing video %d: %v", videoID, err)
+// ShowVideo 处理用户视频列表请求，验证用户身份后查询数据库并返回视频信息
+// 参数说明:
+//   - c: *gin.Context Gin框架上下文对象，用于处理HTTP请求和响应
+//
+// 功能流程:
+//   - 执行用户身份验证
+//   - 查询当前用户关联的视频数据
+//   - 返回标准化JSON响应
+func ShowVideo(c *gin.Context) {
+	// 用户身份验证检查
+	user, ok := checkUser(c)
+	if !ok {
 		return
 	}
 
-	// 执行耗时操作（不在事务中）
-	processor, err := services.NewVideoProcessor()
-	if err != nil {
-		updateVideoStatus(videoID, "failed", err.Error(), time.Now())
+	var videoInfos []struct {
+		VideoID uint   `json:"video_id"`
+		Title   string `json:"title"`
+	}
+	// 数据库查询操作：获取当前用户的视频ID和标题
+	if err := config.Conf.DB.Model(&models.Video{}).
+		Where("user_id = ?", user.ID).
+		Select("id as video_id, title").
+		Scan(&videoInfos).Error; err != nil {
+		// 数据库查询错误处理
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "视频查询失败"})
 		return
 	}
 
-	startTime := time.Now()
-	if err := processor.Process(&video, processor); err != nil {
-		updateVideoStatus(videoID, "failed", err.Error(), startTime)
-		return
-	} else {
-		updateVideoStatus(videoID, "completed", "", startTime)
-		_ = config.Conf.DB.Transaction(func(tx *gorm.DB) error {
-			work := models.Work{
-				UserName: userName,
-				FileName: fileName,
-				FilePath: processor.OutputFolder,
-			}
-			return tx.Create(&work).Error
+	//如果没有视频记录，返回空数组
+	if len(videoInfos) == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "当前没有视频记录",
+			"videos":  []interface{}{},
 		})
-	}
-}
-
-func GetVideo(c *gin.Context) {
-	var video models.Video
-	videoID := c.Param("id")
-
-	if config.Conf.DB.First(&video, videoID).Error != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Video not found"})
 		return
 	}
 
-	// 返回相对路径
-	fileName := filepath.Base(video.FilePath)
+	// 成功返回视频数据
 	c.JSON(http.StatusOK, gin.H{
-		"video":    video,
-		"view_url": "/view/" + videoID,
-		"file_url": "/uploads/" + fileName, // 通过Static路由访问
+		"message": "视频查询成功",
+		"videos":  videoInfos,
 	})
-}
-
-func updateVideoStatus(videoID uint, status, errorLog string, startTime time.Time) {
-	err := config.Conf.DB.Transaction(func(tx *gorm.DB) error {
-		updates := map[string]interface{}{"status": status}
-		if status == "completed" {
-			updates["process_time"] = int(time.Since(startTime).Seconds())
-		}
-		if errorLog != "" {
-			updates["error_log"] = errorLog
-		}
-		return tx.Model(&models.Video{}).Where("id = ?", videoID).Updates(updates).Error
-	})
-	if err != nil {
-		log.Printf("Failed to update video %d status: %v", videoID, err)
-	}
 }

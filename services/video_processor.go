@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"myapp/config"
-	"myapp/models"
 	"myapp/utils"
 	"os"
 	"os/exec"
@@ -59,13 +57,13 @@ func NewVideoProcessor(iterations string) (*VideoProcessor, error) {
 // 返回值:
 //
 //	如果处理过程中发生错误，则返回错误。
-func (vp *VideoProcessor) ProcessVideo(video *models.Video, processor *VideoProcessor) error {
+func (vp *VideoProcessor) ProcessVideo(videoPath string, processor *VideoProcessor) error {
 	// 生成唯一输出目录
 	outputFolder := utils.SafeJoin(vp.BaseOutputFolder, "output")
 
 	// 执行训练命令
 	var err error
-	processor.OutputFolder, err = vp.runTraining(video.FilePath, outputFolder)
+	processor.OutputFolder, err = vp.runTraining(videoPath, outputFolder)
 	if err != nil {
 		return err
 	}
@@ -77,14 +75,6 @@ func (vp *VideoProcessor) ProcessVideo(video *models.Video, processor *VideoProc
 // 该函数接受视频路径和输出文件夹路径作为参数。
 // 它返回训练过程中生成的输出路径或者错误信息（如果有）。
 func (vp *VideoProcessor) runTraining(videoPath, outputFolder string) (string, error) {
-	// 获取上传路径的绝对路径，用于后续的路径验证。
-	uploadPathAbs, _ := filepath.Abs(config.Conf.UploadPath)
-
-	// 检查视频路径是否为绝对路径并且以上传路径开头。
-	if !filepath.IsAbs(videoPath) || !strings.HasPrefix(videoPath, uploadPathAbs) {
-		return "", fmt.Errorf("invalid video path")
-	}
-
 	// 构建运行训练脚本的命令。
 	cmd := exec.Command(vp.PythonInterpreter, vp.TrainerPath, "--video", videoPath, "--iterations", vp.Iterations)
 
@@ -110,7 +100,9 @@ func (vp *VideoProcessor) runTraining(videoPath, outputFolder string) (string, e
 		if strings.Contains(scanner.Text(), "Output folder:") {
 			parts := strings.Split(scanner.Text(), ": ")
 			if len(parts) > 1 {
-				return strings.TrimSpace(parts[1])[0:19], nil
+				outputPath := strings.TrimSpace(parts[1])[0:19]
+				outputPathAbs, _ := filepath.Abs(outputPath)
+				return outputPathAbs, nil
 			}
 		}
 	}
@@ -127,21 +119,17 @@ func (vp *VideoProcessor) runTraining(videoPath, outputFolder string) (string, e
 // 返回值:
 //
 //	如果转换过程中遇到任何错误，则返回错误。
-func (vp *VideoProcessor) Splat(workPath string) error {
+func (vp *VideoProcessor) Splat() error {
 	// 尝试在指定的工作路径中找到.ply文件。
-	plyPath, err := findPlyPath(workPath)
+	plyPath, err := findPlyPath(vp.Iterations, vp.OutputFolder)
 	if err != nil {
 		// 如果找不到.ply文件，返回错误。
 		return fmt.Errorf("fail to find .ply file: %v", err)
 	}
 
-	// 生成.splat文件的路径，通过替换.ply文件的扩展名实现。
-	splatPath := strings.Split(plyPath, ".")[0]
-	splatPath += ".splat"
-
 	// 构建执行Python转换脚本的命令。
 	// 使用VideoProcessor实例中指定的Python解释器。
-	cmd := exec.Command(vp.PythonInterpreter, "web/convert.py", plyPath, "--output", splatPath)
+	cmd := exec.Command(vp.PythonInterpreter, "3DGS/gaussian-splatting/splat.py", plyPath)
 	// 添加环境变量以确保Python脚本可以找到所需的库。
 	cmd.Env = append(os.Environ(), fmt.Sprintf("PYTHONPATH=%s", "3DGS/gaussian-splatting/envs/gaussian_splatting"))
 
@@ -155,19 +143,9 @@ func (vp *VideoProcessor) Splat(workPath string) error {
 	return nil
 }
 
-func findPlyPath(filePath string) (string, error) {
-	if _, err := os.Stat(filePath + "/point_cloud/iteration_30000/point_cloud.ply"); err != nil {
-		if _, err = os.Stat(filePath + "/point_cloud/iteration_7000/point_cloud.ply"); err != nil {
-			if _, err = os.Stat(filePath + "input.ply"); err != nil {
-				return "", err
-			} else {
-				filePath += "input.ply"
-			}
-		} else {
-			filePath += "/point_cloud/iteration_7000/point_cloud.ply"
-		}
-	} else {
-		filePath += "/point_cloud/iteration_7000/point_cloud.ply"
+func findPlyPath(iterations, filePath string) (string, error) {
+	if _, err := os.Stat(filePath + "/point_cloud/iteration_" + iterations + "/point_cloud.ply"); err != nil {
+		return "", fmt.Errorf("fail to find .ply file: %v", err)
 	}
-	return filePath, nil
+	return filePath + "/point_cloud/iteration_" + iterations + "/point_cloud.ply", nil
 }

@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"myapp/config"
+	"myapp/database"
 	"myapp/models"
 	"myapp/services"
 	"net/http"
@@ -65,6 +66,15 @@ func InitModel(c *gin.Context) {
 		return
 	}
 
+	videoPath, err := database.RetrieveFromBucket(fmt.Sprintf("%s%d", "video", videoInfo.VideoID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("fail to find video:%v", err),
+		})
+		return
+	}
+	defer os.RemoveAll(filepath.Dir(videoPath))
+
 	// 执行training
 	processor, err := services.NewVideoProcessor(videoInfo.Iterations)
 	if err != nil {
@@ -80,9 +90,10 @@ func InitModel(c *gin.Context) {
 		})
 		return
 	}
+	defer os.RemoveAll(processor.OutputFolder)
 
 	startTime := time.Now()
-	if err := processor.ProcessVideo(&video, processor); err != nil {
+	if err := processor.ProcessVideo(videoPath, processor); err != nil {
 		// 如果视频处理失败，更新work状态并返回错误响应
 		if updateErr := updateWorkStatus(work.ID, "process failed", processor.OutputFolder, err.Error(), startTime); updateErr != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -97,9 +108,9 @@ func InitModel(c *gin.Context) {
 	}
 
 	// 执行splat
-	if err := processor.Splat(processor.OutputFolder); err != nil {
+	if err := processor.Splat(); err != nil {
 		// 如果splat操作失败，更新work状态并返回错误响应
-		if updateErr := updateWorkStatus(work.ID, "process failed", processor.OutputFolder, err.Error(), startTime); updateErr != nil {
+		if updateErr := updateWorkStatus(work.ID, "splat failed", processor.OutputFolder, err.Error(), startTime); updateErr != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"status error": updateErr.Error(),
 			})
@@ -107,6 +118,34 @@ func InitModel(c *gin.Context) {
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "fail to splat",
+		})
+		return
+	}
+
+	splatPath := processor.OutputFolder + "/point_cloud/iteration_" + processor.Iterations + "/point_cloud.splat"
+	file, err := os.Open(splatPath)
+	if err != nil {
+		if updateErr := updateWorkStatus(work.ID, "upload failed", processor.OutputFolder, err.Error(), startTime); updateErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status error": updateErr.Error(),
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "fail to open splat file",
+		})
+		return
+	}
+	defer file.Close()
+	if err := database.StoreInBucket(fmt.Sprintf("%d", work.ID), "work", file); err != nil {
+		if updateErr := updateWorkStatus(work.ID, "upload failed", processor.OutputFolder, err.Error(), startTime); updateErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status error": updateErr.Error(),
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "fail to upload work",
 		})
 		return
 	}

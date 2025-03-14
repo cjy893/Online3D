@@ -3,14 +3,12 @@ package handlers
 import (
 	"fmt"
 	"myapp/config"
+	"myapp/database"
 	"myapp/models"
 	"myapp/services"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -65,6 +63,15 @@ func InitModel(c *gin.Context) {
 		return
 	}
 
+	videoPath, err := database.RetrieveFromBucket(fmt.Sprintf("%s%d", "video", videoInfo.VideoID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("fail to find video:%v", err),
+		})
+		return
+	}
+	defer os.RemoveAll(filepath.Dir(videoPath))
+
 	// 执行training
 	processor, err := services.NewVideoProcessor(videoInfo.Iterations)
 	if err != nil {
@@ -80,9 +87,10 @@ func InitModel(c *gin.Context) {
 		})
 		return
 	}
+	defer os.RemoveAll(processor.OutputFolder)
 
 	startTime := time.Now()
-	if err := processor.ProcessVideo(&video, processor); err != nil {
+	if err := processor.ProcessVideo(videoPath, processor); err != nil {
 		// 如果视频处理失败，更新work状态并返回错误响应
 		if updateErr := updateWorkStatus(work.ID, "process failed", processor.OutputFolder, err.Error(), startTime); updateErr != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -97,9 +105,9 @@ func InitModel(c *gin.Context) {
 	}
 
 	// 执行splat
-	if err := processor.Splat(processor.OutputFolder); err != nil {
+	if err := processor.Splat(); err != nil {
 		// 如果splat操作失败，更新work状态并返回错误响应
-		if updateErr := updateWorkStatus(work.ID, "process failed", processor.OutputFolder, err.Error(), startTime); updateErr != nil {
+		if updateErr := updateWorkStatus(work.ID, "splat failed", processor.OutputFolder, err.Error(), startTime); updateErr != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"status error": updateErr.Error(),
 			})
@@ -107,6 +115,34 @@ func InitModel(c *gin.Context) {
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "fail to splat",
+		})
+		return
+	}
+
+	splatPath := processor.OutputFolder + "/point_cloud/iteration_" + processor.Iterations + "/point_cloud.splat"
+	file, err := os.Open(splatPath)
+	if err != nil {
+		if updateErr := updateWorkStatus(work.ID, "upload failed", processor.OutputFolder, err.Error(), startTime); updateErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status error": updateErr.Error(),
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "fail to open splat file",
+		})
+		return
+	}
+	defer file.Close()
+	if err := database.StoreInBucket(fmt.Sprintf("%d", work.ID), "work", file); err != nil {
+		if updateErr := updateWorkStatus(work.ID, "upload failed", processor.OutputFolder, err.Error(), startTime); updateErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status error": updateErr.Error(),
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "fail to upload work",
 		})
 		return
 	}
@@ -174,101 +210,57 @@ func updateWorkStatus(workID uint, status, outputFolder, errorLog string, startT
 //
 //	c *gin.Context - Gin框架的上下文，用于处理HTTP请求和响应
 func GetWork(c *gin.Context) {
-	// 初始化一个Work结构体实例
-	var work models.Work
-	// 从请求参数中获取作品ID
-	workID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	var workID struct {
+		ID uint `json:"id"`
+	}
+	err := c.ShouldBindJSON(&workID)
 	if err != nil {
-		//如果id解析失败，返回400错误
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "id is not a number",
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
 
-	// 尝试从数据库中获取作品信息
-	if config.Conf.DB.First(&work, workID).Error != nil {
-		// 如果作品不存在，返回404错误
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": "Work Not Found",
-		})
-		return
-	}
-
-	// 尝试寻找.splat文件
-	baseFilePath := filepath.Join(work.FilePath, "point_cloud", "iteration_"+work.Iterations)
-	splatPath := filepath.Join(baseFilePath, "point_cloud.splat")
-	if _, err := os.Stat(splatPath); err == nil {
-		//如果找到.splat文件，返回文件
-		c.File(splatPath)
-		return
-	}
-
-	// 如果未找到.splat文件，继续寻找.ply文件并转换为.splat文件
-	c.JSON(http.StatusContinue, gin.H{
-		"continue": ".splat file not found, continue to find .ply file and convert to .splat file",
-	})
-
-	// 寻找.ply文件
-	plyPath := filepath.Join(baseFilePath, "point_cloud.ply")
-	if _, err := os.Stat(plyPath); err != nil {
-		// 如果.ply文件不存在，返回404错误
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": "Ply File Not Found",
-		})
-		return
-	}
-
-	// 将.ply文件转换为.splat文件
-	splatPath, err = splat(plyPath)
+	splatPath, err := database.RetrieveFromBucket(fmt.Sprintf("work%d", workID.ID))
 	if err != nil {
-		// 如果转换过程中出现错误，返回400错误
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": err.Error(),
-		})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve work from bucket"})
 		return
 	}
-
-	// 返回转换后的.splat文件
+	defer os.RemoveAll(filepath.Dir(splatPath))
 	c.File(splatPath)
 }
 
-// splat函数负责将给定的工作路径下的数据转换为"splat"格式。
-// 这个函数首先生成一个唯一的"splat"名称，然后在配置的SplatPath下创建一个目录，
-// 并在这个目录中创建一个名为".splat"的文件。接着，它使用Python脚本将工作路径下的数据
-// 转换为"splat"格式，并将输出保存在刚创建的".splat"文件中。
-//
-// 参数:
-//
-//	workPath - string类型，表示需要转换的数据的工作路径。
-//
-// 返回值:
-//
-//	string类型，表示转换后的"splat"文件的绝对路径。
-//	error类型，如果转换过程中发生错误，则返回该错误。
-func splat(workPath string) (string, error) {
-	// 尝试在指定的工作路径中找到.ply文件。
-	plyPath := filepath.Join(workPath, "point_cloud.splat")
-	if _, err := os.Stat(plyPath); err != nil {
-		return "", fmt.Errorf("fail to find .ply file: %v", err)
+func ShowWork(c *gin.Context) {
+	user, ok := checkUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证的用户"})
+		return
 	}
 
-	// 生成.splat文件的路径，通过替换.ply文件的扩展名实现。
-	splatPath := strings.Split(plyPath, ".")[0]
-	splatPath += ".splat"
-
-	// 构建执行Python转换脚本的命令。
-	// 使用VideoProcessor实例中指定的Python解释器。
-	cmd := exec.Command(config.Conf.PythonPath+"/Python.exe", "web/convert.py", plyPath, "--output", splatPath)
-	// 添加环境变量以确保Python脚本可以找到所需的库。
-	cmd.Env = append(os.Environ(), fmt.Sprintf("PYTHONPATH=%s", "3DGS/gaussian-splatting/envs/gaussian_splatting"))
-
-	// 执行命令并检查是否有错误发生。
-	if err := cmd.Run(); err != nil {
-		// 如果执行命令时出错，返回错误。
-		return "", fmt.Errorf("fail to convert to splat file:%w", err)
+	var workInfos []struct {
+		WorkID   uint   `json:"work_id"`
+		WorkName string `json:"workName"`
+		Status   string `json:"status"`
 	}
 
-	// 如果一切顺利，返回nil表示没有发生错误。
-	return splatPath, nil
+	if err := config.Conf.DB.Model(&models.Work{}).
+		Where("user_id=?", user.ID).
+		Select("id as work_id, work_name, status").
+		Scan(&workInfos).Error; err != nil {
+		// 如果数据库查询失败，返回错误响应
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "作品查询失败"})
+		return
+	}
+
+	if len(workInfos) == 0 {
+		// 如果没有作品记录，返回空数组
+		c.JSON(http.StatusOK, gin.H{
+			"message": "当前没有作品记录",
+			"works":   []interface{}{},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "作品查询成功",
+		"works":   workInfos,
+	})
 }

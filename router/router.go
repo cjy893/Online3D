@@ -1,7 +1,6 @@
 package router
 
 import (
-	"myapp/config"
 	"myapp/handlers"
 	"myapp/middleware"
 
@@ -26,14 +25,11 @@ func RouterConfig() *gin.Engine {
 		auth.POST("/video/upload", handlers.UploadVideo)
 		auth.POST("/work/init", handlers.InitModel)
 		auth.GET("/video/", handlers.ShowVideo)
-		auth.GET("/work/get/:id", handlers.GetWork)
+		auth.GET("/work/", handlers.ShowWork)
 		auth.GET("/work/view", handlers.GetViwer)
+		auth.GET("/work/path", handlers.GetWork)
 		auth.DELETE("/:id/delete", handlers.DeleteUser)
 	}
-
-	// 配置静态资源服务，映射上传和输出目录。
-	router.Static("/uploads", config.Conf.UploadPath)
-	router.Static("/output", config.Conf.OutputPath)
 
 	// 返回配置好的路由器实例。
 	return router

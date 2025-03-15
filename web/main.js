@@ -737,8 +737,7 @@ let defaultViewMatrix = [
 ];
 let viewMatrix = defaultViewMatrix;
 async function main() {
-    const url = new URL("http://127.0.0.1:8080/user/work/get"); // 替换为你的后端接口地址
-    url.searchParams.append("id", "1"); // 添加参数 id=1
+    const url = window.generatedUrl;
 
     let fileUrl;
     fetch(url, {

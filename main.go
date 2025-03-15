@@ -28,6 +28,7 @@ func main() {
 			}
 			if err := sqlDB.Close(); err != nil {
 				logrus.Errorf("fail to close the database: %v", err)
+				return
 			}
 		}
 	}()

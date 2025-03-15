@@ -68,7 +68,7 @@ func UploadVideo(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "文件保存失败"})
 		return
 	}
-	defer os.Remove("temp")
+	defer os.RemoveAll(filepath.Dir(filePath))
 
 	tx := config.Conf.DB.Begin()
 	defer func() {

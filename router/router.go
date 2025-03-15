@@ -28,6 +28,7 @@ func RouterConfig() *gin.Engine {
 		auth.GET("/work/", handlers.ShowWork)
 		auth.GET("/work/view", handlers.GetViwer)
 		auth.GET("/work/path", handlers.GetWork)
+		auth.GET("/SplatViewer", handlers.SplatViewer)
 		auth.DELETE("/:id/delete", handlers.DeleteUser)
 	}
 

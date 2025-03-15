@@ -37,7 +37,7 @@ func StoreInBucket(id, ftype string, file *os.File) error {
 	_, err := config.Conf.MINIO.PutObject(
 		context.Background(),
 		config.Conf.BucketName,
-		ftype+id,
+		ftype+id+ext,
 		file,
 		-1, // 使用-1让minio自动检测文件大小
 		opts,
@@ -56,7 +56,7 @@ func RetrieveFromBucket(id string) (string, error) {
 	}
 
 	// 创建保存目录（自动处理多级目录）
-	if err := os.MkdirAll("temp", 0755); err != nil {
+	if err := os.MkdirAll("temp/"+id, 0755); err != nil {
 		return "", fmt.Errorf("failed to create directories: %w", err)
 	}
 
@@ -68,7 +68,7 @@ func RetrieveFromBucket(id string) (string, error) {
 	} else {
 		return "", fmt.Errorf("unknown file type: %s", id)
 	}
-	fileName := "temp/" + id + ext
+	fileName := "temp/" + id + "/" + id + ext
 	// 创建本地文件
 	file, err := os.Create(fileName)
 	if err != nil {

@@ -11,6 +11,4 @@ type Work struct {
 	Iterations  string
 	UserID      uint
 	User        User
-	VideoID     uint
-	Video       Video
 }

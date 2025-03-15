@@ -7,5 +7,4 @@ type Video struct {
 	Title  string `gorm:"not null"`
 	UserID uint
 	User   User
-	Works  []Work
 }

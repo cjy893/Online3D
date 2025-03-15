@@ -27,7 +27,7 @@ func RouterConfig() *gin.Engine {
 		auth.GET("/video/", handlers.ShowVideo)
 		auth.GET("/work/", handlers.ShowWork)
 		auth.GET("/work/view", handlers.GetViwer)
-		auth.GET("/work/get/:work_id", handlers.GetWork)
+		auth.GET("/work/get/:id", handlers.GetWork)
 		auth.GET("/SplatViewer", handlers.SplatViewer)
 		auth.DELETE("/:id/delete", handlers.DeleteUser)
 	}

@@ -12,7 +12,7 @@ function getQueryParams() {
 
 // Get work_id from query parameters
 const queryParams = getQueryParams();
-const workID = queryParams['work_id'] || "{{WORK_ID}}";
+const workID = queryParams['id'] || "{{ID}}";
 const url = new URL(`/user/work/get/${workID}`, window.location.origin);
 
 // Make url globally available

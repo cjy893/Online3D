@@ -8,8 +8,8 @@ import (
 	"myapp/config"
 	"os"
 	"path/filepath"
-	"strings"
 
+	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
 )
 
@@ -60,15 +60,8 @@ func RetrieveFromBucket(id string) (string, error) {
 		return "", fmt.Errorf("failed to create directories: %w", err)
 	}
 
-	var ext string
-	if strings.HasPrefix(id, "video") {
-		ext = ".mp4"
-	} else if strings.HasPrefix(id, "work") {
-		ext = ".splat"
-	} else {
-		return "", fmt.Errorf("unknown file type: %s", id)
-	}
-	fileName := "temp/" + id + "/" + id + ext
+	fileuuid := uuid.New().String()
+	fileName := "temp/" + fileuuid + "/" + id
 	// 创建本地文件
 	file, err := os.Create(fileName)
 	if err != nil {

@@ -5,7 +5,6 @@ import "gorm.io/gorm"
 type Work struct {
 	gorm.Model
 	WorkName    string `gorm:"not null"`
-	FilePath    string `gorm:"not null"`
 	Status      string `gorm:"not null"`
 	ProcessTime string
 	ErrorLog    string

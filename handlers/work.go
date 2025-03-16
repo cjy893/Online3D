@@ -307,7 +307,7 @@ func UploadWork(c *gin.Context) {
 //
 //	c *gin.Context - Gin框架的上下文，用于处理HTTP请求和响应
 func GetWork(c *gin.Context) {
-	workID := c.Param("id")
+	workID := c.Query("id")
 
 	splatPath, err := database.RetrieveFromBucket("work" + workID + ".splat")
 	defer func() {

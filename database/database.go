@@ -55,13 +55,13 @@ func RetrieveFromBucket(id string) (string, error) {
 		return "", fmt.Errorf("object %s not found: %w", id, err)
 	}
 
+	fileuuid := uuid.New().String()
+	fileName := "temp/" + fileuuid + "/" + id
 	// 创建保存目录（自动处理多级目录）
-	if err := os.MkdirAll("temp/"+id, 0755); err != nil {
+	if err := os.MkdirAll("temp/"+fileuuid, 0755); err != nil {
 		return "", fmt.Errorf("failed to create directories: %w", err)
 	}
 
-	fileuuid := uuid.New().String()
-	fileName := "temp/" + fileuuid + "/" + id
 	// 创建本地文件
 	file, err := os.Create(fileName)
 	if err != nil {

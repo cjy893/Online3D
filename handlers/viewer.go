@@ -9,8 +9,10 @@ import (
 func SplatViewer(c *gin.Context) {
 	workID := c.Query("id")
 	if workID == "" {
-		c.String(http.StatusBadRequest, "id is required")
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "work_id不能为空",
+		})
 		return
 	}
-	c.File("./web/index.html")
+	c.Redirect(http.StatusFound, "/web/index.html?id="+workID)
 }

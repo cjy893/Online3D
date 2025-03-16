@@ -62,13 +62,13 @@ func UploadVideo(c *gin.Context) {
 
 	ext := filepath.Ext(file.Filename)
 	fileUUID := uuid.New().String()
-	filePath := filepath.Join("temp", fileUUID+ext)
+	filePath := filepath.Join("temp", fileUUID, fileUUID+ext)
 
 	if err := c.SaveUploadedFile(file, filePath); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "文件保存失败"})
 		return
 	}
-	defer os.Remove("temp")
+	defer os.RemoveAll(filepath.Dir(filePath))
 
 	tx := config.Conf.DB.Begin()
 	defer func() {

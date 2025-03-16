@@ -1,7 +1,9 @@
 package router
 
 import (
+	"myapp/config"
 	"myapp/handlers"
+
 	"myapp/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -25,11 +27,14 @@ func RouterConfig() *gin.Engine {
 		auth.POST("/video/upload", handlers.UploadVideo)
 		auth.POST("/work/init", handlers.InitModel)
 		auth.GET("/video/", handlers.ShowVideo)
+		auth.POST("/work/upload", handlers.UploadWork)
 		auth.GET("/work/", handlers.ShowWork)
-		auth.GET("/work/view", handlers.GetViwer)
-		auth.GET("/work/path", handlers.GetWork)
+		auth.GET("/work/get", handlers.GetWork)
+		auth.GET("/SplatViewer", handlers.SplatViewer)
 		auth.DELETE("/:id/delete", handlers.DeleteUser)
 	}
+
+	router.Static("/web", config.Conf.SplatPath)
 
 	// 返回配置好的路由器实例。
 	return router

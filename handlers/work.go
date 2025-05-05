@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"log"
+	"math"
 	"myapp/config"
 	"myapp/database"
 	"myapp/models"
@@ -369,17 +370,49 @@ func SearchWorks(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize := 20
 
-	var works []models.Work
-	if err := config.Conf.DB.Where("work_name LIKE ?", "%"+q+"%").Where("is_public = ?", true).
+	if page < 1 {
+		page = 1
+	}
+
+	var total int64
+	query := config.Conf.DB.Model(&models.Work{}).
+		Where("work_name LIKE ?", "%"+q+"%").
+		Where("is_public = ?", true)
+
+	if err := query.Count(&total).Error; err != nil {
+		log.Printf("Count works error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "内部服务器错误"})
+		return
+	}
+
+	var workInfos []struct {
+		WorkID   uint   `json:"work_id"`
+		WorkName string `json:"workName"`
+	}
+	if err := query.Select("id as work_id, work_name").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
-		Find(&works).Error; err != nil {
+		Scan(&workInfos).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "作品查询失败"})
+		return
+	}
+
+	if len(workInfos) == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "搜索的作品不存在",
+			"works":   []interface{}{},
+		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "作品查询成功",
-		"works":   works,
+		"works":   workInfos,
+		"pagination": gin.H{
+			"current_page": page,
+			"total_pages":  int(math.Ceil(float64(total) / float64(pageSize))),
+			"total_items":  total,
+			"page_size":    pageSize,
+		},
 	})
 }

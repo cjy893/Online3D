@@ -370,7 +370,7 @@ func SearchWorks(c *gin.Context) {
 	pageSize := 20
 
 	var works []models.Work
-	if err := config.Conf.DB.Where("work_name LIKE ?", "%"+q+"%").
+	if err := config.Conf.DB.Where("work_name LIKE ? and is_public = true", "%"+q+"%").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Find(&works).Error; err != nil {

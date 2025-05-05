@@ -223,7 +223,7 @@ func SearchVideos(c *gin.Context) {
 	pageSize := 20
 
 	var videos []models.Video
-	if err := config.Conf.DB.Where("title LIKE ?", "%"+q+"%").
+	if err := config.Conf.DB.Where("title LIKE ? and is_public = true", "%"+q+"%").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Find(&videos).Error; err != nil {

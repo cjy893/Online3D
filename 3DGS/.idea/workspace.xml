@@ -9,11 +9,14 @@
       <change afterPath="$PROJECT_DIR$/gaussian-splatting/resize_images.py" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/gaussian-splatting/train_images.py" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/gaussian-splatting/train_video.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../.env" beforeDir="false" afterPath="$PROJECT_DIR$/../.env" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/gaussian-splatting" beforeDir="false" afterPath="$PROJECT_DIR$/gaussian-splatting" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/gaussian-splatting/convert.py" beforeDir="false" afterPath="$PROJECT_DIR$/gaussian-splatting/convert.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/gaussian-splatting/submodules/diff-gaussian-rasterization" beforeDir="false" afterPath="$PROJECT_DIR$/gaussian-splatting/submodules/diff-gaussian-rasterization" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/gaussian-splatting/submodules/diff-gaussian-rasterization/cuda_rasterizer/forward.cu" beforeDir="false" afterPath="$PROJECT_DIR$/gaussian-splatting/submodules/diff-gaussian-rasterization/cuda_rasterizer/forward.cu" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/gaussian-splatting/submodules/diff-gaussian-rasterization" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/gaussian-splatting/submodules/simple-knn" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/gaussian-splatting/train.py" beforeDir="false" afterPath="$PROJECT_DIR$/gaussian-splatting/train.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../handlers/work.go" beforeDir="false" afterPath="$PROJECT_DIR$/../handlers/work.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../services/video_processor.go" beforeDir="false" afterPath="$PROJECT_DIR$/../services/video_processor.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

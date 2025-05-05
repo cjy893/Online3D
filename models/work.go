@@ -6,6 +6,7 @@ type Work struct {
 	gorm.Model
 	WorkName    string `gorm:"not null"`
 	Status      string `gorm:"not null"`
+	IsPublic    bool   `gorm:"not null"`
 	ProcessTime string
 	ErrorLog    string
 	Iterations  string

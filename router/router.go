@@ -19,6 +19,12 @@ func RouterConfig() *gin.Engine {
 	router.POST("/register", handlers.Register)
 	router.POST("/login", handlers.Login)
 
+	router.Group("/search")
+	{
+		router.GET("/work", handlers.SearchWorks)
+		router.GET("/video", handlers.SearchVideos)
+	}
+
 	// 创建一个带有"/user"前缀的路由组，并应用身份验证中间件。
 	auth := router.Group("/user")
 	auth.Use(middleware.AuthMiddleware())

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -26,6 +27,7 @@ func InitModel(c *gin.Context) {
 	var videoInfo struct {
 		VideoID    uint   `json:"id"`
 		WorkName   string `json:"workName"`
+		IsPublic   bool   `json:"isPublic"`
 		Iterations string `json:"iterations"`
 	}
 	if err := c.ShouldBindJSON(&videoInfo); err != nil {
@@ -50,6 +52,7 @@ func InitModel(c *gin.Context) {
 		work = models.Work{
 			UserID:     video.UserID,
 			WorkName:   videoInfo.WorkName,
+			IsPublic:   videoInfo.IsPublic,
 			Status:     "processing",
 			Iterations: videoInfo.Iterations,
 		}
@@ -104,7 +107,7 @@ func InitModel(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "fail to train the model",
+			"error": fmt.Sprintf("fail to process video:%v", err),
 		})
 		return
 	}
@@ -134,7 +137,7 @@ func InitModel(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "fail to splat",
+			"error": fmt.Sprintf("fail to splat:%v", err),
 		})
 		return
 	}
@@ -358,5 +361,25 @@ func ShowWork(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "作品查询成功",
 		"works":   workInfos,
+	})
+}
+
+func SearchWorks(c *gin.Context) {
+	q := c.Query("q")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize := 20
+
+	var works []models.Work
+	if err := config.Conf.DB.Where("work_name LIKE ?", "%"+q+"%").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Find(&works).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "作品查询失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "作品查询成功",
+		"works":   works,
 	})
 }

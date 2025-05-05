@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"myapp/config"
 	"myapp/utils"
 	"os"
 	"os/exec"
@@ -12,13 +13,12 @@ import (
 )
 
 type VideoProcessor struct {
-	TrainerPath       string
-	PythonPath        string
-	BaseOutputFolder  string
-	OutputFolder      string
-	PythonInterpreter string
-	FPS               int
-	Iterations        string
+	TrainerPath      string
+	PythonPath       string
+	BaseOutputFolder string
+	OutputFolder     string
+	FPS              int
+	Iterations       string
 }
 
 // NewVideoProcessor 创建并初始化一个新的VideoProcessor实例。
@@ -37,13 +37,12 @@ func NewVideoProcessor(iterations string) (*VideoProcessor, error) {
 
 	// 返回一个新的VideoProcessor实例，包含了一系列预设的属性值。
 	return &VideoProcessor{
-		TrainerPath:       trainerPath,
-		PythonPath:        utils.SafeJoin(projectRoot, "3DGS/gaussian-splatting/envs/gaussian_splatting"),
-		BaseOutputFolder:  utils.SafeJoin(projectRoot, "output"),
-		OutputFolder:      "",
-		PythonInterpreter: "C:/Users/Administrator/anaconda3/envs/gaussian_splatting/python.exe",
-		FPS:               2,
-		Iterations:        iterations,
+		TrainerPath:      trainerPath,
+		PythonPath:       utils.SafeJoin(projectRoot, config.Conf.PythonPath),
+		BaseOutputFolder: utils.SafeJoin(projectRoot, "output"),
+		OutputFolder:     "",
+		FPS:              2,
+		Iterations:       iterations,
 	}, nil
 }
 
@@ -76,7 +75,7 @@ func (vp *VideoProcessor) ProcessVideo(videoPath string, processor *VideoProcess
 // 它返回训练过程中生成的输出路径或者错误信息（如果有）。
 func (vp *VideoProcessor) runTraining(videoPath, outputFolder string) (string, error) {
 	// 构建运行训练脚本的命令。
-	cmd := exec.Command(vp.PythonInterpreter, vp.TrainerPath, "--video", videoPath, "--iterations", vp.Iterations)
+	cmd := exec.Command(vp.PythonPath, vp.TrainerPath, "--video", videoPath, "--iterations", vp.Iterations)
 
 	// 添加PYTHONPATH环境变量以确保脚本能找到所需的模块。
 	cmd.Env = append(os.Environ(), fmt.Sprintf("PYTHONPATH=%s", vp.PythonPath))
@@ -129,7 +128,7 @@ func (vp *VideoProcessor) Splat() error {
 
 	// 构建执行Python转换脚本的命令。
 	// 使用VideoProcessor实例中指定的Python解释器。
-	cmd := exec.Command(vp.PythonInterpreter, "3DGS/gaussian-splatting/splat.py", plyPath)
+	cmd := exec.Command(vp.PythonPath, "3DGS/gaussian-splatting/splat.py", plyPath)
 	// 添加环境变量以确保Python脚本可以找到所需的库。
 	cmd.Env = append(os.Environ(), fmt.Sprintf("PYTHONPATH=%s", "3DGS/gaussian-splatting/envs/gaussian_splatting"))
 

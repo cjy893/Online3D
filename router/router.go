@@ -19,10 +19,9 @@ func RouterConfig() *gin.Engine {
 	router.POST("/register", handlers.Register)
 	router.POST("/login", handlers.Login)
 
-	router.Group("/search")
+	search := router.Group("/search")
 	{
-		router.GET("/work", handlers.SearchWorks)
-		router.GET("/video", handlers.SearchVideos)
+		search.GET("/videos", handlers.SearchVideos)
 	}
 
 	// 创建一个带有"/user"前缀的路由组，并应用身份验证中间件。
@@ -32,6 +31,8 @@ func RouterConfig() *gin.Engine {
 		// 需要身份验证的路由规则。
 		auth.POST("/video/upload", handlers.UploadVideo)
 		auth.POST("/work/init", handlers.InitModel)
+		auth.POST("/work/transfer", handlers.Transfer)
+		auth.POST("/work/ai/transfer", handlers.TransferByAIAgent)
 		auth.GET("/video/", handlers.ShowVideo)
 		auth.POST("/work/upload", handlers.UploadWork)
 		auth.GET("/work/", handlers.ShowWork)

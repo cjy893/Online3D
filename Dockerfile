@@ -34,7 +34,7 @@
 # # 安装Miniconda
 # ENV CONDA_DIR=/opt/conda
 # ENV PATH=/opt/conda/bin:$PATH
-# ENV CUDA_HOME=/user/local/cuda-11.8
+# ENV CUDA_HOME=/usr/local/cuda-11.8
 # RUN wget --tries=5 --retry-connrefused --waitretry=30 \
 #     https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh && \
 #     /bin/bash ~/miniconda.sh -b -p $CONDA_DIR && \
@@ -80,79 +80,86 @@
 #     conda run -n gaussian_splatting python -c "import torch; print(torch.cuda.is_available())"
 
 # CMD ["/bin/bash", "-c", "source activate gaussian_splatting && /Online3D/main"]
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04 AS python-builder
 
-FROM golang:1.23.4 AS go-builder
-
-WORKDIR /Online3D
-COPY go.mod go.sum ./
-RUN go mod tidy
-
-COPY . .
-RUN GOPROXY=https://goproxy.cn,direct CGO_ENABLED=0 GOOS=linux go build -o main .
-
-FROM nvidia/cuda:11.8.0-devel-ubuntu20.04 AS python-builder
-
+# 安装基础工具
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+    gcc-11 g++-11 \
+    cmake \
+    gnupg2 \
+    sudo \
+    ninja-build \
+    gfortran \
     wget \
-    sh \
-    vim \
     git \
-    build-essential
+    build-essential \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-ENV CONDA_DIR=/opt/conda
-ENV PATH=/opt/conda/bin:$PATH
-ENV CUDA_HOME=/user/local/cuda-11.8
+# 安装Miniconda
+ENV PATH /opt/conda/bin:${PATH} 
+ENV CONDA_DIR /opt/conda
+
 RUN wget --tries=5 --retry-connrefused --waitretry=30 \
-    https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh && \
-    /bin/bash ~/miniconda.sh -b -p $CONDA_DIR && \
-    rm ~/miniconda.sh
+    https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh \
+    && bash Miniconda3-latest-Linux-x86_64.sh -b -p $CONDA_DIR \
+    && rm Miniconda3-latest-Linux-x86_64.sh
 
-RUN wget https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda_11.8.0_520.61.05_linux.run \
-    sudo sh cuda_11.8.0_520.61.05_linux.run
-
-RUN vim ~/.bashrc
-ENV PATH=/usr/local/cuda-11.8/bin${PATH:+:${PATH}}
-ENV LD_LIBRARY_PATH=/usr/local/cuda-11.8/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
-
-RUN source ~/.bashrc
-
+# 创建Conda环境
 COPY environment.yml .
-COPY submodules/ ./submodules/
-RUN $CONDA_DIR/bin/conda config --set show_channel_urls yes && \
-    $CONDA_DIR/bin/conda config --remove-key channels && \
-    $CONDA_DIR/bin/conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge/ && \
-    $CONDA_DIR/bin/conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/ && \
-    $CONDA_DIR/bin/conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch/ && \
-    $CONDA_DIR/bin/conda config --set remote_connect_timeout_secs 60 && \
+COPY ./3DGS/StyleGaussian/submodules/ ./3DGS/StyleGaussian/submodules/
+RUN $CONDA_DIR/bin/conda config --set remote_connect_timeout_secs 60 && \
     $CONDA_DIR/bin/conda config --set remote_read_timeout_secs 1800 && \
     $CONDA_DIR/bin/conda config --set remote_max_retries 10 && \
-    $CONDA_DIR/bin/conda install -y -n base conda-libmamba-solver && \
-    CONDA_SOLVER=libmamba $CONDA_DIR/bin/conda env create -n gaussian_splatting -f environment.yml --quiet && \
-    CONDA_SOLVER=libmamba $CONDA_DIR/bin/conda env update -n gaussian_splatting -f environment.yml && \
+    CONDA_SOLVER=libmamba $CONDA_DIR/bin/conda env create -n stylegaussian -f environment.yml --quiet && \
     conda clean -afy
 
-RUN conda run -n gaussian_splatting pip install --no-cache-dir \
-    ./submodules/diff-gaussian-rasterization \
-    ./submodules/simple-knn \
-    ./submodules/fused-ssim
-# 第三阶段：最终镜像
-FROM nvidia/cuda:11.8.0-runtime-ubuntu20.04
+ENV CONDA_DEFAULT_ENV stylegaussian \
+    PATH /opt/conda/envs/stylegaussian/bin:$PATH
 
-# 从Python构建阶段复制Conda环境
+ENV CC /usr/bin/gcc-11 \
+    CXX /usr/bin/g++-11
+
+ENV TORCH_CUDA_ARCH_LIST "7.0+PTX"
+
+RUN conda run -n gaussian_splatting pip install ./3DGS/StyleGaussian/submodules/simple-knn \
+    ./3DGS/StyleGaussian/submodules/diff-gaussian-rasterization \
+    ./3DGS/StyleGaussian/submodules/fused-ssim
+
+FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends\
+    wget \
+    imagemagick \
+    ffmpeg \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=python-builder /opt/conda /opt/conda
-ENV PATH=/opt/conda/envs/gaussian_splatting/bin:/opt/conda/bin:$PATH
-ENV LD_LIBRARY_PATH=/usr/local/cuda-11.8/lib64:$LD_LIBRARY_PATH
+ENV PATH /opt/conda/envs/stylegaussian/bin:/opt/conda/bin:${PATH}
 
-# 从Go构建阶段复制二进制文件
-COPY --from=go-builder /Online3D/main /Online3D/main
+COPY ./env/bin/ /usr/local/bin/
+COPY ./env/lib/ /usr/local/lib/
+
+COPY ./env/colmap .
+RUN cd colmap/build && \
+    cmake .. \
+    -D CMAKE_CUDA_COMPILER="/usr/local/cuda-11.8/bin/nvcc" ../CMakeLists.txt \
+    -D CMAKE_CUDA_ARCHITECTURES='89' && \
+    cd .. \
+    make -j4 && \
+    make install && \
+    cd ../../ && rm -rf colmap
+
+COPY main /Online3D/main
 COPY 3DGS /Online3D/3DGS
 
 # 激活Conda环境并设置工作目录
 WORKDIR /Online3D
 
-# 验证CUDA和Python环境
-RUN conda run -n gaussian_splatting python -c "import torch; print(torch.__version__)" && \
-    conda run -n gaussian_splatting python -c "import torch; print(torch.cuda.is_available())"
+RUN conda run -n stylegaussian python -c "import torch; print(torch.__version__)" && \
+    conda run -n stylegaussian python -c "import torch; print(torch.cuda.is_available())"
 
-CMD ["/bin/bash", "-c", "source activate gaussian_splatting && /Online3D/main"]
+CMD ["/bin/bash", "-c", "source /opt/conda/etc/profile.d/conda.sh && conda activate stylegaussian && /Online3D/main"]

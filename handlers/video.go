@@ -2,8 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"log"
-	"math"
 	"myapp/config"
 	"myapp/database"
 	"myapp/models"
@@ -135,7 +133,7 @@ func UploadVideo(c *gin.Context) {
 		return
 	}
 	defer fileReader.Close()
-	if err := database.StoreInBucket(fmt.Sprintf("%d", video.ID), "video", fileReader); err != nil {
+	if err := database.StoreInBucket(fmt.Sprintf("videos/%d.mp4", video.ID), fileReader); err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("fail to upload video:%v", err),
@@ -152,7 +150,7 @@ func UploadVideo(c *gin.Context) {
 			})
 			return
 		}
-		if err := database.StoreInBucket(fmt.Sprintf("%d", video.ID), "cover", fileReader); err != nil {
+		if err := database.StoreInBucket(fmt.Sprintf("covers/%d.jpg", video.ID), fileReader); err != nil {
 			tx.Rollback()
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": fmt.Sprintf("fail to upload cover:%v", err),
@@ -224,52 +222,17 @@ func SearchVideos(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize := 20
 
-	if page < 1 {
-		page = 1
-	}
-
-	var total int64
-	query := config.Conf.DB.Model(&models.Video{}).
-		Where("title LIKE ?", "%"+q+"%").
-		Where("is_public = ?", true)
-
-	// 获取总数
-	if err := query.Count(&total).Error; err != nil {
-		log.Printf("Count videos error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "内部服务器错误"})
-		return
-	}
-
-	var videoInfos []struct {
-		VideoID  uint   `json:"video_id"`
-		Title    string `json:"title"`
-		CoverUrl string `json:"cover_url"`
-	}
-	if err := query.Select("id as video_id, title, cover_url").
+	var videos []models.Video
+	if err := config.Conf.DB.Where("title LIKE ?", "%"+q+"%").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
-		Scan(&videoInfos).Error; err != nil {
-		// 数据库查询错误处理
+		Find(&videos).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "视频查询失败"})
-		return
-	}
-
-	if len(videoInfos) == 0 {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "搜索的视频不存在",
-			"videos":  []interface{}{},
-		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "视频查询成功",
-		"videos":  videoInfos,
-		"pagination": gin.H{
-			"current_page": page,
-			"total_pages":  int(math.Ceil(float64(total) / float64(pageSize))),
-			"total_items":  total,
-			"page_size":    pageSize,
-		},
+		"videos":  videos,
 	})
 }

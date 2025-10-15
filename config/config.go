@@ -41,7 +41,7 @@ func LoadConfig() {
 		EndPoint:   os.Getenv("END_POINT"),
 		PythonPath: os.Getenv("PYTHON_PATH"),
 		SplatPath:  os.Getenv("SPLAT_PATH"),
-		ServerPort: "8080",
+		ServerPort: "8084",
 		DSN:        os.Getenv("DB_DSN"),
 	}
 
@@ -63,6 +63,5 @@ func LoadConfig() {
 	if err != nil {
 		panic("failed to connect minio: " + err.Error())
 	}
-
 	Conf.MINIO = minioClient
 }

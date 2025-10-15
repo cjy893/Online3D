@@ -1,6 +1,7 @@
 package main
 
 import (
+	"myapp/agent"
 	"myapp/config"
 	"myapp/router"
 	"os"
@@ -13,6 +14,15 @@ import (
 func main() {
 	// 加载配置
 	config.LoadConfig()
+
+	go func() {
+		err := agent.InitAgent()
+		if err != nil {
+			logrus.Errorf("fail to initialize agent")
+		} else {
+			logrus.Info("agent initialization successful")
+		}
+	}()
 
 	// 校验必要配置
 	if config.Conf.ServerPort == "" {

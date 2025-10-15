@@ -3,7 +3,7 @@ package handlers
 import (
 	"fmt"
 	"log"
-	"math"
+	"myapp/agent"
 	"myapp/config"
 	"myapp/database"
 	"myapp/models"
@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -25,13 +24,14 @@ import (
 //	c *gin.Context: Gin框架的上下文对象，用于处理HTTP请求和响应
 func InitModel(c *gin.Context) {
 	//获取初始化模型信息
-	var videoInfo struct {
+	var initInfo struct {
 		VideoID    uint   `json:"id"`
 		WorkName   string `json:"workName"`
 		IsPublic   bool   `json:"isPublic"`
+		CoverUrl   string `json:"coverUrl"`
 		Iterations string `json:"iterations"`
 	}
-	if err := c.ShouldBindJSON(&videoInfo); err != nil {
+	if err := c.ShouldBindJSON(&initInfo); err != nil {
 		// 如果解析JSON失败，返回错误响应
 		c.JSON(http.StatusBadRequest, gin.H{"error": err})
 		return
@@ -39,7 +39,7 @@ func InitModel(c *gin.Context) {
 
 	// 找到video信息
 	var video models.Video
-	if err := config.Conf.DB.Where("id=?", videoInfo.VideoID).First(&video).Error; err != nil {
+	if err := config.Conf.DB.Where("id=?", initInfo.VideoID).First(&video).Error; err != nil {
 		// 如果找不到视频，返回错误响应
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": "Video Not Found",
@@ -52,10 +52,9 @@ func InitModel(c *gin.Context) {
 	err := config.Conf.DB.Transaction(func(tx *gorm.DB) error {
 		work = models.Work{
 			UserID:     video.UserID,
-			WorkName:   videoInfo.WorkName,
-			IsPublic:   videoInfo.IsPublic,
+			WorkName:   initInfo.WorkName,
 			Status:     "processing",
-			Iterations: videoInfo.Iterations,
+			Iterations: initInfo.Iterations,
 		}
 		return tx.Create(&work).Error
 	})
@@ -63,12 +62,13 @@ func InitModel(c *gin.Context) {
 		// 如果创建work记录失败，返回错误响应
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"init error": "Failed to initialize video model",
-			"videoid":    videoInfo.VideoID,
+			"videoid":    initInfo.VideoID,
 		})
 		return
 	}
 
-	videoPath, err := database.RetrieveFromBucket(fmt.Sprintf("%s%d%s", "video", videoInfo.VideoID, ".mp4"))
+	videoPath := filepath.Join("videos", fmt.Sprintf("%d.mp4", initInfo.VideoID))
+	videoPath, err = database.RetrieveFromBucket(videoPath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("fail to find video:%v", err),
@@ -78,97 +78,75 @@ func InitModel(c *gin.Context) {
 	defer os.RemoveAll(filepath.Dir(videoPath))
 
 	// 执行training
-	processor, err := services.NewVideoProcessor(videoInfo.Iterations)
+	processor, err := services.NewProcessor(initInfo.Iterations)
 	if err != nil {
-		// 如果处理失败，更新work状态并返回错误响应
-		if updateErr := updateWorkStatus(work.ID, "process failed", err.Error(), time.Now()); updateErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status error": updateErr.Error(),
-			})
-			return
-		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"init error": "fail to train the model",
 		})
 		return
 	}
-	defer func() {
-		if err := os.RemoveAll(filepath.Dir(processor.OutputFolder)); err != nil {
-			log.Printf("fail to remove temp file:%v", err)
-		}
-	}()
 
 	startTime := time.Now()
-	if err := processor.ProcessVideo(videoPath, processor); err != nil {
-		// 如果视频处理失败，更新work状态并返回错误响应
-		if updateErr := updateWorkStatus(work.ID, "process failed", err.Error(), startTime); updateErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status error": updateErr.Error(),
-			})
-			return
-		}
+	if err := processor.RunFfmpeg(videoPath); err != nil {
+		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to generate pics:%v", err), startTime)
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to process video:%v", err),
+			"error": fmt.Sprintf("fail to generate pics:%v", err),
 		})
 		return
 	}
 
-	select {
-	case <-c.Request.Context().Done():
-		if updateErr := updateWorkStatus(work.ID, "splat failed", "canceled", startTime); updateErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status error": updateErr.Error(),
-			})
-			return
-		}
-		c.JSON(499, gin.H{
-			"error": "canceled",
-		})
-		return
-	default:
-	}
-
-	// 执行splat
-	if err := processor.Splat(); err != nil {
-		// 如果splat操作失败，更新work状态并返回错误响应
-		if updateErr := updateWorkStatus(work.ID, "splat failed", err.Error(), startTime); updateErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status error": updateErr.Error(),
-			})
-			return
-		}
+	dataPath := filepath.Dir(videoPath)
+	if err := processor.RunColmap(dataPath); err != nil {
+		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to estimate the camera:%v", err), startTime)
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to splat:%v", err),
+			"error": fmt.Sprintf("fail to estimate the camera:%v", err),
+		})
+	}
+
+	if err := processor.Reconstruction(dataPath); err != nil {
+		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to reconstruction:%v", err), startTime)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("fail to reconstruction:%v", err),
 		})
 		return
 	}
 
-	splatPath := processor.OutputFolder + "/point_cloud/iteration_" + processor.Iterations + "/point_cloud.splat"
-	file, err := os.Open(splatPath)
+	if err := database.StoreInBucketWIthDir(fmt.Sprintf("%d", work.ID), dataPath); err != nil {
+		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to store data:%v", err), startTime)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("fail to store data:%v", err),
+		})
+	}
+
+	model, err := os.Open(filepath.Join(processor.OutputFolder, fmt.Sprintf("point_cloud/iteration_%s/point_cloud.ply", initInfo.Iterations)))
 	if err != nil {
-		if updateErr := updateWorkStatus(work.ID, "upload failed", err.Error(), startTime); updateErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status error": updateErr.Error(),
-			})
-			return
-		}
+		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to find model:%v", err), startTime)
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "fail to open splat file",
+			"error": fmt.Sprintf("fail to find model:%v", err),
 		})
 		return
 	}
-	defer file.Close()
-	if err := database.StoreInBucket(fmt.Sprintf("%d", work.ID), "work", file); err != nil {
-		if updateErr := updateWorkStatus(work.ID, "upload failed", err.Error(), startTime); updateErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status error": updateErr.Error(),
-			})
-			return
-		}
+	if err := database.StoreInBucket(filepath.Join(fmt.Sprintf("%d", work.ID), dataPath, "point_cloud", "model.ply"), model); err != nil {
+		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to store model:%v", err), startTime)
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "fail to upload work",
+			"error": fmt.Sprintf("fail to store model:%v", err),
+		})
+	}
+
+	chkpnt, err := os.Open(filepath.Join(processor.OutputFolder, fmt.Sprintf("checkpoint%s.pth", initInfo.Iterations)))
+	if err != nil {
+		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to find checkpoint:%v", err), startTime)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("fail to find checkpoint:%v", err),
 		})
 		return
+	}
+
+	if err := database.StoreInBucket(filepath.Join(fmt.Sprintf("%d", work.ID), dataPath, "checkpoint", "chkpnt.pth"), chkpnt); err != nil {
+		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to store checkpoint:%v", err), startTime)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("fail to store checkpoint:%v", err),
+		})
 	}
 
 	// 更新状态为完成
@@ -183,6 +161,140 @@ func InitModel(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Model initialization and processing completed successfully",
 	})
+}
+
+func Transfer(c *gin.Context) {
+	var transferInfo struct {
+		WorkID     uint   `json:"id"`
+		WorkName   string `json:"workName"`
+		Style      string `json:"style"`
+		Weight     string `json:"weight"`
+		Iterations string `json:"iterations"`
+	}
+	if err := c.ShouldBindJSON(&transferInfo); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err})
+		return
+	}
+
+	var origin models.Work
+	if err := config.Conf.DB.Where("id = ?", transferInfo.WorkID).First(&origin).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "Work Not Found",
+		})
+		return
+	}
+
+	var work models.Work
+	err := config.Conf.DB.Transaction(func(tx *gorm.DB) error {
+		work = models.Work{
+			UserID:     origin.UserID,
+			WorkName:   transferInfo.WorkName,
+			Status:     "processing",
+			Iterations: transferInfo.Iterations,
+		}
+		return tx.Create(&work).Error
+	})
+	if err != nil {
+		// 如果创建work记录失败，返回错误响应
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"init error": "Failed to transfer model",
+			"work_id":    transferInfo.WorkID,
+		})
+		return
+	}
+
+	err = database.RetrieveFromBucketWithDir(fmt.Sprintf("%d", transferInfo.WorkID), "transfer_tmp")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("fail to find work:%v", err),
+		})
+		return
+	}
+
+	processor, err := services.NewProcessor(transferInfo.Iterations)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"init error": "fail to train the model",
+		})
+		return
+	}
+
+	stylePath := "img/style.png"
+	dataPath := filepath.Join("transfer_tmp", fmt.Sprintf("%d", transferInfo.WorkID))
+
+	startTime := time.Now()
+	if err := processor.Stylize(dataPath, stylePath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("fail to stylize:%v", err),
+		})
+		return
+	}
+
+	model, err := os.Open(filepath.Join(processor.OutputFolder, fmt.Sprintf("point_cloud/iteration_%s/point_cloud.ply", transferInfo.Iterations)))
+	if err != nil {
+		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to find model:%v", err), startTime)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("fail to find model:%v", err),
+		})
+		return
+	}
+	if err := database.StoreInBucket(filepath.Join(fmt.Sprintf("%d", work.ID), dataPath, "point_cloud", "model.ply"), model); err != nil {
+		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to store model:%v", err), startTime)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("fail to store model:%v", err),
+		})
+	}
+
+	chkpnt, err := os.Open(filepath.Join(processor.OutputFolder, fmt.Sprintf("checkpoint%s.pth", transferInfo.Iterations)))
+	if err != nil {
+		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to find checkpoint:%v", err), startTime)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("fail to find checkpoint:%v", err),
+		})
+		return
+	}
+
+	if err := database.StoreInBucket(filepath.Join(fmt.Sprintf("%d", work.ID), dataPath, "checkpoint", "chkpnt.pth"), chkpnt); err != nil {
+		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to store checkpoint:%v", err), startTime)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("fail to store checkpoint:%v", err),
+		})
+	}
+
+	// 更新状态为完成
+	if updateErr := updateWorkStatus(work.ID, "completed", "", startTime); updateErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"status error": updateErr.Error(),
+		})
+		return
+	}
+
+	// 返回成功响应
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Model transfer completed successfully",
+	})
+}
+
+func TransferByAIAgent(c *gin.Context) {
+	var transferInfo struct {
+		UserInput string `json:"userInput"`
+	}
+	if err := c.ShouldBindJSON(&transferInfo); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err})
+		return
+	}
+
+	resp, err := agent.ServerAgent.Invoke(c.Request.Context(), transferInfo.UserInput)
+	response := gin.H{
+		"message": resp,
+	}
+	if err != nil {
+		response["error"] = err.Error()
+		c.JSON(http.StatusInternalServerError, response)
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // updateWorkStatus 更新工作的状态。
@@ -226,6 +338,7 @@ func updateWorkStatus(workID uint, status, errorLog string, startTime time.Time)
 	return nil
 }
 
+// TODO
 func UploadWork(c *gin.Context) {
 	user, ok := checkUser(c)
 	if !ok {
@@ -283,7 +396,7 @@ func UploadWork(c *gin.Context) {
 		return
 	}
 	defer fileReader.Close()
-	if err := database.StoreInBucket(fmt.Sprintf("%d", work.ID), "work", fileReader); err != nil {
+	if err := database.StoreInBucket(fmt.Sprintf("%d", work.ID), fileReader); err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("fail to upload work:%v", err),
@@ -313,7 +426,8 @@ func UploadWork(c *gin.Context) {
 func GetWork(c *gin.Context) {
 	workID := c.Query("id")
 
-	splatPath, err := database.RetrieveFromBucket("work" + workID + ".splat")
+	splatPath := filepath.Join("temp", workID, workID+".splat")
+	splatPath, err := database.RetrieveFromBucket(splatPath)
 	defer func() {
 		err := os.RemoveAll(filepath.Dir(splatPath))
 		if err != nil {
@@ -362,57 +476,5 @@ func ShowWork(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "作品查询成功",
 		"works":   workInfos,
-	})
-}
-
-func SearchWorks(c *gin.Context) {
-	q := c.Query("q")
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize := 20
-
-	if page < 1 {
-		page = 1
-	}
-
-	var total int64
-	query := config.Conf.DB.Model(&models.Work{}).
-		Where("work_name LIKE ?", "%"+q+"%").
-		Where("is_public = ?", true)
-
-	if err := query.Count(&total).Error; err != nil {
-		log.Printf("Count works error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "内部服务器错误"})
-		return
-	}
-
-	var workInfos []struct {
-		WorkID   uint   `json:"work_id"`
-		WorkName string `json:"workName"`
-	}
-	if err := query.Select("id as work_id, work_name").
-		Offset((page - 1) * pageSize).
-		Limit(pageSize).
-		Scan(&workInfos).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "作品查询失败"})
-		return
-	}
-
-	if len(workInfos) == 0 {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "搜索的作品不存在",
-			"works":   []interface{}{},
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "作品查询成功",
-		"works":   workInfos,
-		"pagination": gin.H{
-			"current_page": page,
-			"total_pages":  int(math.Ceil(float64(total) / float64(pageSize))),
-			"total_items":  total,
-			"page_size":    pageSize,
-		},
 	})
 }

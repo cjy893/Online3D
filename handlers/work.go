@@ -172,7 +172,7 @@ func InitModel(c *gin.Context) {
 //
 // JSON参数:
 //   - id: 源作品的ID
-//   - workName: 新生成作品的名称
+//   - work_name: 新生成作品的名称
 //   - style: 风格类型（未在代码中使用）
 //   - weight: 权重参数（未在代码中使用）
 //   - iterations: 迭代次数
@@ -182,7 +182,7 @@ func InitModel(c *gin.Context) {
 func Transfer(c *gin.Context) {
 	var transferInfo struct {
 		WorkID     uint   `json:"id"`
-		WorkName   string `json:"workName"`
+		WorkName   string `json:"work_name"`
 		Style      string `json:"style"`
 		Weight     string `json:"weight"`
 		Iterations string `json:"iterations"`

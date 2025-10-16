@@ -6,12 +6,15 @@ import (
 	"mime/multipart"
 	"myapp/config"
 	"myapp/handlers"
+	"myapp/models"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -29,6 +32,15 @@ func TestVideoUpload(t *testing.T) {
 		}
 		config.Conf.DB = db
 	}
+
+	minioClient, err := minio.New("objectstorageapi.hzh.sealos.run", &minio.Options{
+		Creds: credentials.NewStaticV4("swsqe2yx", "vqgztfbr4xp4vtxd", ""),
+	})
+	if err != nil {
+		t.Fatal("Failed to initialize MinIO client:", err)
+	}
+	config.Conf.MINIO = minioClient
+	config.Conf.BucketName = "swsqe2yx-online3d"
 
 	tempFile, err := os.CreateTemp("", "test_video.mp4")
 	assert.NoError(t, err, "Failed to create temporary video file")
@@ -76,7 +88,19 @@ func TestVideoUpload(t *testing.T) {
 	// 直接调用处理函数
 	handlers.UploadVideo(c)
 
-	// 根据UploadVideo的实现，即使有userID，仍可能会因其他原因失败
-	// 但我们不再期望401错误
-	assert.NotEqual(t, http.StatusUnauthorized, w.Code, "Should not get unauthorized error")
+	respBody, _ := io.ReadAll(w.Body)
+	assert.Equal(t, http.StatusCreated, w.Code, string(respBody))
+
+	// 检查数据库中是否创建了视频记录
+	var video models.Video
+	result := config.Conf.DB.Where("title = ? AND user_id = ?", "Test Video", 1).First(&video)
+	assert.NoError(t, result.Error, "Video should be saved in database")
+	assert.Equal(t, true, video.IsPublic, "Video should be public")
+	assert.Equal(t, 1, int(video.UserID), "Video should belong to test user")
+
+	// 清理测试数据
+	config.Conf.DB.Delete(&video)
+	var count int64
+	config.Conf.DB.Model(&models.Video{}).Where("id = ?", video.ID).Count(&count)
+	assert.NotEqual(t, int64(0), count, "Video should be deleted from database")
 }

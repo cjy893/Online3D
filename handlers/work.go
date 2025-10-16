@@ -176,6 +176,20 @@ func Transfer(c *gin.Context) {
 		return
 	}
 
+	styleIMGFile, err := c.FormFile("style_img")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Style image is required"})
+		return
+	}
+
+	styleIMGPath := filepath.Join("transfer_img_tmp", uuid.NewString())
+	if err := c.SaveUploadedFile(styleIMGFile, styleIMGPath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("fail to save style image:%v", err),
+		})
+		return
+	}
+
 	var origin models.Work
 	if err := config.Conf.DB.Where("id = ?", transferInfo.WorkID).First(&origin).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
@@ -185,7 +199,7 @@ func Transfer(c *gin.Context) {
 	}
 
 	var work models.Work
-	err := config.Conf.DB.Transaction(func(tx *gorm.DB) error {
+	err = config.Conf.DB.Transaction(func(tx *gorm.DB) error {
 		work = models.Work{
 			UserID:     origin.UserID,
 			WorkName:   transferInfo.WorkName,
@@ -219,11 +233,9 @@ func Transfer(c *gin.Context) {
 		return
 	}
 
-	stylePath := "img/style.png"
 	dataPath := filepath.Join("transfer_tmp", fmt.Sprintf("%d", transferInfo.WorkID))
-
 	startTime := time.Now()
-	if err := processor.Stylize(dataPath, stylePath); err != nil {
+	if err := processor.Stylize(dataPath, styleIMGPath); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("fail to stylize:%v", err),
 		})

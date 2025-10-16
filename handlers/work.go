@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"log"
 	"myapp/agent"
 	"myapp/config"
 	"myapp/database"
@@ -313,8 +312,6 @@ func Transfer(c *gin.Context) {
 	})
 }
 
-// ... existing code ...
-
 func TransferByAIAgent(c *gin.Context) {
 	var transferInfo struct {
 		UserInput string `json:"userInput"`
@@ -457,29 +454,28 @@ func UploadWork(c *gin.Context) {
 	})
 }
 
-// GetWorkPath 获取作品的文件路径
-// 该函数首先尝试根据ID从数据库中获取作品信息，然后根据作品的文件路径寻找对应的.splat文件
-// 如果.splat文件不存在，则尝试寻找.ply文件并将其转换为.splat文件
+// GetWork 根据ID获取作品的点云模型文件并返回给客户端
 // 参数:
 //
-//	c *gin.Context - Gin框架的上下文，用于处理HTTP请求和响应
+//	c *gin.Context: Gin框架的上下文对象，用于处理HTTP请求和响应
+//
+// 该函数会:
+// 1. 从请求参数中获取作品ID
+// 2. 构造点云模型文件在存储中的路径
+// 3. 从存储中检索该文件
+// 4. 将文件发送给客户端
+// 5. 函数返回后清理临时文件
 func GetWork(c *gin.Context) {
 	workID := c.Query("id")
 
-	splatPath := filepath.Join("temp", workID, workID+".splat")
-	splatPath, err := database.RetrieveFromBucket(splatPath)
-	defer func() {
-		err := os.RemoveAll(filepath.Dir(splatPath))
-		if err != nil {
-			log.Println("Failed to remove temporary directory:", err)
-		}
-	}()
+	plyPath := filepath.Join(fmt.Sprintf("%s", workID), "point_cloud", "model.ply")
+	plyPath, err := database.RetrieveFromBucket(plyPath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("fail to retrieve work: %v", err)})
 		return
 	}
-	defer os.RemoveAll(filepath.Dir(splatPath))
-	c.File(splatPath)
+	defer os.Remove(plyPath)
+	c.File(plyPath)
 }
 
 func ShowWork(c *gin.Context) {

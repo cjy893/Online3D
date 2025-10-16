@@ -77,8 +77,11 @@ func UploadVideo(c *gin.Context) {
 	videoFileUUID := uuid.New().String()
 	videoFilePath := filepath.Join("temp", videoFileUUID, videoFileUUID+ext)
 
-	ext = filepath.Ext(coverFile.Filename)
-	coverFilePath := filepath.Join("temp", videoFileUUID, videoFileUUID+ext)
+	var coverFilePath string
+	if coverFile != nil {
+		ext = filepath.Ext(coverFile.Filename)
+		coverFilePath = filepath.Join("temp", videoFileUUID, videoFileUUID+ext)
+	}
 
 	if err := c.SaveUploadedFile(videoFile, videoFilePath); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "文件保存失败"})
@@ -164,6 +167,7 @@ func UploadVideo(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("fail to commit :%v", err),
 		})
+		return
 	}
 
 	c.JSON(http.StatusCreated, gin.H{

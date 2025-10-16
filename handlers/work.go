@@ -17,12 +17,22 @@ import (
 	"gorm.io/gorm"
 )
 
-// InitModel 初始化视频模型并进行处理
-// 参数:
+// InitModel 处理3D模型初始化请求
 //
-//	c *gin.Context: Gin框架的上下文对象，用于处理HTTP请求和响应
+// 该函数接收一个包含视频ID、作品名称、可见性设置、封面URL和迭代次数的JSON请求，
+// 然后通过视频数据进行3D模型重建处理，包括视频帧提取、相机参数估计、三维重建等步骤，
+// 最终将生成的点云模型和检查点文件存储到存储桶中。
+//
+// 参数:
+//   - c: Gin框架的上下文对象，用于处理HTTP请求和响应
+//
+// JSON参数:
+//   - id: 视频ID
+//   - workName: 作品名称
+//   - isPublic: 是否公开作品
+//   - coverUrl: 封面图片URL
+//   - iterations: 迭代次数
 func InitModel(c *gin.Context) {
-	//获取初始化模型信息
 	var initInfo struct {
 		VideoID    uint   `json:"id"`
 		WorkName   string `json:"workName"`
@@ -31,22 +41,18 @@ func InitModel(c *gin.Context) {
 		Iterations string `json:"iterations"`
 	}
 	if err := c.ShouldBindJSON(&initInfo); err != nil {
-		// 如果解析JSON失败，返回错误响应
 		c.JSON(http.StatusBadRequest, gin.H{"error": err})
 		return
 	}
 
-	// 找到video信息
 	var video models.Video
 	if err := config.Conf.DB.Where("id=?", initInfo.VideoID).First(&video).Error; err != nil {
-		// 如果找不到视频，返回错误响应
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": "Video Not Found",
 		})
 		return
 	}
 
-	// 创建work记录
 	var work models.Work
 	err := config.Conf.DB.Transaction(func(tx *gorm.DB) error {
 		work = models.Work{
@@ -58,7 +64,6 @@ func InitModel(c *gin.Context) {
 		return tx.Create(&work).Error
 	})
 	if err != nil {
-		// 如果创建work记录失败，返回错误响应
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"init error": "Failed to initialize video model",
 			"videoid":    initInfo.VideoID,
@@ -66,6 +71,7 @@ func InitModel(c *gin.Context) {
 		return
 	}
 
+	// 从存储桶中检索视频文件
 	videoPath := filepath.Join("videos", fmt.Sprintf("%d.mp4", initInfo.VideoID))
 	videoPath, err = database.RetrieveFromBucket(videoPath)
 	if err != nil {
@@ -76,7 +82,7 @@ func InitModel(c *gin.Context) {
 	}
 	defer os.RemoveAll(filepath.Dir(videoPath))
 
-	// 执行training
+	// 创建处理器实例
 	processor, err := services.NewProcessor(initInfo.Iterations)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -86,6 +92,7 @@ func InitModel(c *gin.Context) {
 	}
 
 	startTime := time.Now()
+	// 提取视频帧
 	if err := processor.RunFfmpeg(videoPath); err != nil {
 		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to generate pics:%v", err), startTime)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -95,6 +102,7 @@ func InitModel(c *gin.Context) {
 	}
 
 	dataPath := filepath.Dir(videoPath)
+	// 运行COLMAP进行相机参数估计
 	if err := processor.RunColmap(dataPath); err != nil {
 		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to estimate the camera:%v", err), startTime)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -102,6 +110,7 @@ func InitModel(c *gin.Context) {
 		})
 	}
 
+	// 执行三维重建
 	if err := processor.Reconstruction(dataPath); err != nil {
 		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to reconstruction:%v", err), startTime)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -110,6 +119,7 @@ func InitModel(c *gin.Context) {
 		return
 	}
 
+	// 将处理结果存储到存储桶
 	if err := database.StoreInBucketWIthDir(fmt.Sprintf("%d", work.ID), dataPath); err != nil {
 		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to store data:%v", err), startTime)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -117,6 +127,7 @@ func InitModel(c *gin.Context) {
 		})
 	}
 
+	// 获取并存储点云模型文件
 	model, err := os.Open(filepath.Join(processor.OutputFolder, fmt.Sprintf("point_cloud/iteration_%s/point_cloud.ply", initInfo.Iterations)))
 	if err != nil {
 		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to find model:%v", err), startTime)
@@ -132,6 +143,7 @@ func InitModel(c *gin.Context) {
 		})
 	}
 
+	// 获取并存储检查点文件
 	chkpnt, err := os.Open(filepath.Join(processor.OutputFolder, fmt.Sprintf("checkpoint%s.pth", initInfo.Iterations)))
 	if err != nil {
 		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to find checkpoint:%v", err), startTime)
@@ -148,7 +160,7 @@ func InitModel(c *gin.Context) {
 		})
 	}
 
-	// 更新状态为完成
+	// 更新作品状态为完成
 	if updateErr := updateWorkStatus(work.ID, "completed", "", startTime); updateErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"status error": updateErr.Error(),
@@ -156,7 +168,6 @@ func InitModel(c *gin.Context) {
 		return
 	}
 
-	// 返回成功响应
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Model initialization and processing completed successfully",
 	})

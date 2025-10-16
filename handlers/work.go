@@ -163,6 +163,23 @@ func InitModel(c *gin.Context) {
 	})
 }
 
+// Transfer 处理模型风格迁移请求
+//
+// 该函数接收一个包含源作品ID、新作品名称以及风格迁移参数的JSON请求，
+// 同时需要上传一张风格图片，然后对指定的作品执行风格迁移操作。
+//
+// 参数:
+//   - c: Gin框架的上下文对象，用于处理HTTP请求和响应
+//
+// JSON参数:
+//   - id: 源作品的ID
+//   - workName: 新生成作品的名称
+//   - style: 风格类型（未在代码中使用）
+//   - weight: 权重参数（未在代码中使用）
+//   - iterations: 迭代次数
+//
+// 文件参数:
+//   - style_img: 用于风格迁移的风格图像文件
 func Transfer(c *gin.Context) {
 	var transferInfo struct {
 		WorkID     uint   `json:"id"`
@@ -176,6 +193,7 @@ func Transfer(c *gin.Context) {
 		return
 	}
 
+	// 获取并保存上传的风格图像
 	styleIMGFile, err := c.FormFile("style_img")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Style image is required"})
@@ -190,6 +208,7 @@ func Transfer(c *gin.Context) {
 		return
 	}
 
+	// 查找原始作品信息
 	var origin models.Work
 	if err := config.Conf.DB.Where("id = ?", transferInfo.WorkID).First(&origin).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
@@ -198,6 +217,7 @@ func Transfer(c *gin.Context) {
 		return
 	}
 
+	// 创建新的作品记录
 	var work models.Work
 	err = config.Conf.DB.Transaction(func(tx *gorm.DB) error {
 		work = models.Work{
@@ -217,6 +237,8 @@ func Transfer(c *gin.Context) {
 		return
 	}
 
+	// 从存储桶检索原始作品数据到本地
+	dataPath := filepath.Join("transfer_tmp", fmt.Sprintf("%d", transferInfo.WorkID))
 	err = database.RetrieveFromBucketWithDir(fmt.Sprintf("%d", transferInfo.WorkID), "transfer_tmp")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -224,7 +246,9 @@ func Transfer(c *gin.Context) {
 		})
 		return
 	}
+	defer os.RemoveAll(dataPath)
 
+	// 初始化处理器
 	processor, err := services.NewProcessor(transferInfo.Iterations)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -233,7 +257,7 @@ func Transfer(c *gin.Context) {
 		return
 	}
 
-	dataPath := filepath.Join("transfer_tmp", fmt.Sprintf("%d", transferInfo.WorkID))
+	// 执行风格迁移处理
 	startTime := time.Now()
 	if err := processor.Stylize(dataPath, styleIMGPath); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -242,6 +266,7 @@ func Transfer(c *gin.Context) {
 		return
 	}
 
+	// 保存处理后的点云模型文件到存储桶
 	model, err := os.Open(filepath.Join(processor.OutputFolder, fmt.Sprintf("point_cloud/iteration_%s/point_cloud.ply", transferInfo.Iterations)))
 	if err != nil {
 		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to find model:%v", err), startTime)
@@ -257,6 +282,7 @@ func Transfer(c *gin.Context) {
 		})
 	}
 
+	// 保存检查点文件到存储桶
 	chkpnt, err := os.Open(filepath.Join(processor.OutputFolder, fmt.Sprintf("checkpoint%s.pth", transferInfo.Iterations)))
 	if err != nil {
 		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to find checkpoint:%v", err), startTime)
@@ -286,6 +312,8 @@ func Transfer(c *gin.Context) {
 		"message": "Model transfer completed successfully",
 	})
 }
+
+// ... existing code ...
 
 func TransferByAIAgent(c *gin.Context) {
 	var transferInfo struct {

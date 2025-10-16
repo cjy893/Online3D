@@ -235,6 +235,7 @@ func Transfer(c *gin.Context) {
 			WorkName:   transferInfo.WorkName,
 			Status:     "processing",
 			Iterations: transferInfo.Iterations,
+			ParentID:   services.GetParentID(&origin),
 		}
 		return tx.Create(&work).Error
 	})
@@ -248,8 +249,8 @@ func Transfer(c *gin.Context) {
 	}
 
 	// 从存储桶检索原始作品数据到本地
-	dataPath := filepath.Join("transfer_tmp", fmt.Sprintf("%d", transferInfo.WorkID))
-	err = database.RetrieveFromBucketWithDir(fmt.Sprintf("%d", transferInfo.WorkID), "transfer_tmp")
+	dataPath := filepath.Join("transfer_tmp", uuid.NewString())
+	err = database.RetrieveFromBucketWithDir(fmt.Sprintf("%d", *work.ParentID), dataPath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("fail to find work:%v", err),

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"myapp/config"
+	"myapp/models"
 	"myapp/utils"
 	"os"
 	"os/exec"
@@ -168,4 +169,14 @@ func findPlyPath(iterations, filePath string) (string, error) {
 		return "", fmt.Errorf("fail to find .ply file: %v", err)
 	}
 	return filePath + "/point_cloud/iteration_" + iterations + "/point_cloud.ply", nil
+}
+
+// getParentID 返回父作品的ID
+// 如果origin.Parent为nil或origin.Parent.ID为nil，则返回origin.ID的指针
+// 否则返回origin.Parent.ID
+func GetParentID(origin *models.Work) *uint {
+	if origin.Parent == nil {
+		return &origin.ID
+	}
+	return origin.ParentID
 }

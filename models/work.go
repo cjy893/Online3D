@@ -16,5 +16,5 @@ type Work struct {
 
 	ParentID *uint
 	Parent   *Work
-	Children []Work
+	Children []Work `gorm:"foreignkey:ParentID"`
 }

@@ -13,4 +13,8 @@ type Work struct {
 	Iterations  string
 	UserID      uint
 	User        User
+
+	ParentID *uint
+	Parent   *Work
+	Children []Work
 }

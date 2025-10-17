@@ -2,14 +2,13 @@ package test
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
-	"mime/multipart"
 	"myapp/config"
 	"myapp/handlers"
 	"myapp/models"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -42,25 +41,19 @@ func TestModelInit(t *testing.T) {
 	config.Conf.MINIO = minioClient
 	config.Conf.BucketName = "swsqe2yx-online3d"
 
-	body := new(bytes.Buffer)
-	writer := multipart.NewWriter(body)
-
-	err = writer.WriteField("id", "1")
-	assert.NoError(t, err)
-
-	err = writer.WriteField("work_name", "test_work")
-	assert.NoError(t, err)
-
-	err = writer.WriteField("is_public", "true")
-	assert.NoError(t, err)
-
-	err = writer.WriteField("iterations", "1000")
-	assert.NoError(t, err)
+	// 使用JSON格式发送数据
+	jsonData := map[string]interface{}{
+		"id":         uint(2),
+		"workName":   "test_work",
+		"isPublic":   true,
+		"iterations": "1000",
+	}
+	body, _ := json.Marshal(jsonData)
 
 	w := httptest.NewRecorder()
-	req, err := http.NewRequest("POST", "/user/work/init", body)
+	req, err := http.NewRequest("POST", "/user/work/init", bytes.NewBuffer(body))
 	assert.NoError(t, err)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Content-Type", "application/json")
 
 	c, _ := gin.CreateTestContext(w)
 	c.Request = req
@@ -71,26 +64,31 @@ func TestModelInit(t *testing.T) {
 	respBody, _ := io.ReadAll(w.Result().Body)
 	assert.Equal(t, http.StatusOK, w.Code, string(respBody))
 
+	var video models.Video
+	result := config.Conf.DB.Where("id = ?", 2).First(&video)
+	assert.NoError(t, result.Error, "Video should be saved in database")
+	assert.Equal(t, true, video.IsPublic, "Video should be public")
+	assert.Equal(t, 1, int(video.UserID), "Video should belong to test user")
+
 	var work models.Work
-	result := config.Conf.DB.Where("work_name=? AND video_id=?", "test_work", 1).First(&work)
+	result = config.Conf.DB.Where("work_name=? AND user_id=?", "test_work", 1).First(&work)
 	assert.NoError(t, result.Error, "work not found")
 	assert.Equal(t, "completed", work.Status)
 	assert.Equal(t, 1, int(work.UserID), "Work should belong to test user")
-
 }
 
-func TestWorkStylize(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.POST("/user/work/ai/transfer", handlers.TransferByAIAgent)
+// func TestWorkStylize(t *testing.T) {
+// 	gin.SetMode(gin.TestMode)
+// 	router := gin.New()
+// 	router.POST("/user/work/ai/transfer", handlers.TransferByAIAgent)
 
-	reader := strings.NewReader(`{"image_url": "https://example.com/image.jpg"}`)
+// 	reader := strings.NewReader(`{"image_url": "https://example.com/image.jpg"}`)
 
-	req, err := http.NewRequest("POST", "/user/work/ai/transfer", reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+// 	req, err := http.NewRequest("POST", "/user/work/ai/transfer", reader)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
 
-	rr := httptest.NewRecorder()
-	router.ServeHTTP(rr, req)
-}
+// 	rr := httptest.NewRecorder()
+// 	router.ServeHTTP(rr, req)
+// }

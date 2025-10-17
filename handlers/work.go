@@ -64,6 +64,7 @@ func InitModel(c *gin.Context) {
 		return tx.Create(&work).Error
 	})
 	if err != nil {
+		updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to initialize video model:%v", err), time.Now())
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"init error": "Failed to initialize video model",
 			"videoid":    initInfo.VideoID,
@@ -72,9 +73,10 @@ func InitModel(c *gin.Context) {
 	}
 
 	// 从存储桶中检索视频文件
-	videoPath := filepath.Join("videos", fmt.Sprintf("%d.mp4", initInfo.VideoID))
+	videoPath := fmt.Sprintf("videos/%d.mp4", video.ID)
 	videoPath, err = database.RetrieveFromBucket(videoPath)
 	if err != nil {
+		updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to retrieve video:%v", err), time.Now())
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("fail to find video:%v", err),
 		})
@@ -85,6 +87,7 @@ func InitModel(c *gin.Context) {
 	// 创建处理器实例
 	processor, err := services.NewProcessor(initInfo.Iterations)
 	if err != nil {
+		updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to train the model:%v", err), time.Now())
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"init error": "fail to train the model",
 		})

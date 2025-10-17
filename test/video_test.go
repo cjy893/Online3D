@@ -2,9 +2,11 @@ package test
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"myapp/config"
+	"myapp/database"
 	"myapp/handlers"
 	"myapp/models"
 	"net/http"
@@ -42,7 +44,7 @@ func TestVideoUpload(t *testing.T) {
 	config.Conf.MINIO = minioClient
 	config.Conf.BucketName = "swsqe2yx-online3d"
 
-	tempFile, err := os.CreateTemp("", "test_video.mp4")
+	tempFile, err := os.CreateTemp("./", "test_video.mp4")
 	assert.NoError(t, err, "Failed to create temporary video file")
 	defer os.Remove(tempFile.Name())
 
@@ -97,6 +99,11 @@ func TestVideoUpload(t *testing.T) {
 	assert.NoError(t, result.Error, "Video should be saved in database")
 	assert.Equal(t, true, video.IsPublic, "Video should be public")
 	assert.Equal(t, 1, int(video.UserID), "Video should belong to test user")
+
+	path, err := database.RetrieveFromBucket(fmt.Sprintf("%s%d%s", "videos/", video.ID, ".mp4"))
+	assert.NoError(t, err)
+	_, err = os.Stat(path)
+	assert.NoError(t, err)
 
 	// 清理测试数据
 	config.Conf.DB.Delete(&video)

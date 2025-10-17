@@ -29,7 +29,7 @@ type AppConfig struct {
 var Conf AppConfig
 
 func LoadConfig() {
-	err := godotenv.Load()
+	err := godotenv.Load(".env")
 	if err != nil {
 		panic("environment loading error")
 	}

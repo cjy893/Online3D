@@ -43,7 +43,7 @@ func TestModelInit(t *testing.T) {
 
 	// 使用JSON格式发送数据
 	jsonData := map[string]interface{}{
-		"id":         uint(2),
+		"id":         uint(4),
 		"workName":   "test_work",
 		"isPublic":   true,
 		"iterations": "1000",
@@ -65,7 +65,7 @@ func TestModelInit(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code, string(respBody))
 
 	var video models.Video
-	result := config.Conf.DB.Where("id = ?", 2).First(&video)
+	result := config.Conf.DB.Where("id = ?", 4).First(&video)
 	assert.NoError(t, result.Error, "Video should be saved in database")
 	assert.Equal(t, true, video.IsPublic, "Video should be public")
 	assert.Equal(t, 1, int(video.UserID), "Video should belong to test user")

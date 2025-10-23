@@ -63,7 +63,7 @@ func (vp *Processor) RunFfmpeg(videoPath string) error {
 }
 
 func (vp *Processor) RunColmap(modelPath string) error {
-	cmd := exec.Command("xvfb-run", "-a", "python", filepath.Join(vp.TrainerPath, "convert.py"), "-m", modelPath)
+	cmd := exec.Command("python", filepath.Join(vp.TrainerPath, "convert.py"), "-m", modelPath)
 
 	var stdoutBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf

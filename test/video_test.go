@@ -44,18 +44,18 @@ func TestVideoUpload(t *testing.T) {
 	config.Conf.MINIO = minioClient
 	config.Conf.BucketName = "swsqe2yx-online3d"
 
-	tempFile, err := os.CreateTemp("./", "test_video.mp4")
-	assert.NoError(t, err, "Failed to create temporary video file")
-	defer os.Remove(tempFile.Name())
+	// tempFile, err := os.CreateTemp("./", "test_video.mp4")
+	// assert.NoError(t, err, "Failed to create temporary video file")
+	// defer os.Remove(tempFile.Name())
 
-	_, err = tempFile.Write([]byte("fake video content"))
-	assert.NoError(t, err, "Failed to write video content to temporary file")
-	tempFile.Close()
+	// _, err = tempFile.Write([]byte("fake video content"))
+	// assert.NoError(t, err, "Failed to write video content to temporary file")
+	// tempFile.Close()
 
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
 
-	videoFile, err := os.Open(tempFile.Name())
+	videoFile, err := os.Open("video/test_video.mp4")
 	assert.NoError(t, err, "Failed to open temp file")
 	defer videoFile.Close()
 

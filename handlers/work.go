@@ -147,7 +147,7 @@ func InitModel(c *gin.Context) {
 	}
 
 	// 获取并存储检查点文件
-	chkpnt, err := os.Open(filepath.Join(processor.OutputFolder, fmt.Sprintf("checkpoint%s.pth", initInfo.Iterations)))
+	chkpnt, err := os.Open(filepath.Join(processor.OutputFolder, fmt.Sprintf("chkpnt%s.pth", initInfo.Iterations)))
 	if err != nil {
 		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to find checkpoint:%v", err), startTime)
 		c.JSON(http.StatusInternalServerError, gin.H{

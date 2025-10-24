@@ -42,10 +42,10 @@ func StoreInBucketWIthDir(id, dir string) error {
 		defer file.Close()
 
 		// 生成唯一ID（可以基于文件路径或使用UUID）
-		id += "/" + relPath
+		objId := id + "/" + relPath
 
 		// 使用现有函数上传文件
-		if err := StoreInBucket(id, file); err != nil {
+		if err := StoreInBucket(objId, file); err != nil {
 			return fmt.Errorf("failed to upload file %s: %w", path, err)
 		}
 
@@ -145,9 +145,10 @@ func RetrieveFromBucket(id string) (string, error) {
 	ext := filepath.Ext(id)
 
 	fileuuid := uuid.New().String()
-	fileName := "temp/" + fileuuid + ext
+	fileDir := "temp/" + fileuuid
+	fileName := fileDir + "/" + fileuuid + ext
 	// 创建保存目录（自动处理多级目录）
-	if err := os.MkdirAll("temp/", 0755); err != nil {
+	if err := os.MkdirAll(fileDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create directories: %w", err)
 	}
 
@@ -185,4 +186,45 @@ func getContentType(ext string) string {
 	default:
 		return "application/octet-stream"
 	}
+}
+
+// DeleteFolderFromBucket 删除bucket中的整个文件夹
+func DeleteFolderFromBucket(id string) error {
+	// 列出所有匹配前缀的对象
+	objectCh := config.Conf.MINIO.ListObjects(context.Background(), config.Conf.BucketName, minio.ListObjectsOptions{
+		Prefix:    id + "/",
+		Recursive: true,
+	})
+
+	// 收集要删除的对象键
+	var objectsToDelete []minio.ObjectInfo
+	for object := range objectCh {
+		if object.Err != nil {
+			return fmt.Errorf("error listing objects: %w", object.Err)
+		}
+		objectsToDelete = append(objectsToDelete, object)
+	}
+
+	// 批量删除对象
+	if len(objectsToDelete) > 0 {
+		objectsCh := make(chan minio.ObjectInfo)
+		go func() {
+			defer close(objectsCh)
+			for _, obj := range objectsToDelete {
+				objectsCh <- obj
+			}
+		}()
+
+		errorCh := config.Conf.MINIO.RemoveObjects(context.Background(), config.Conf.BucketName, objectsCh, minio.RemoveObjectsOptions{})
+
+		// 检查是否有删除错误
+		for e := range errorCh {
+			if e.Err != nil {
+				return fmt.Errorf("failed to delete object %s: %w", e.ObjectName, e.Err)
+			}
+		}
+	}
+
+	fmt.Printf("Successfully deleted folder %s from bucket\n", id)
+	return nil
 }

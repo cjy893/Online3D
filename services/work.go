@@ -1,7 +1,6 @@
 package services
 
 import (
-	"bytes"
 	"fmt"
 	"myapp/config"
 	"myapp/models"
@@ -43,7 +42,7 @@ func NewProcessor(iterations string) (*Processor, error) {
 		PythonPath:       utils.SafeJoin(projectRoot, config.Conf.PythonPath),
 		BaseOutputFolder: utils.SafeJoin(projectRoot, "output"),
 		OutputFolder:     "",
-		FPS:              2,
+		FPS:              12,
 		Iterations:       iterations,
 	}, nil
 }
@@ -51,8 +50,7 @@ func NewProcessor(iterations string) (*Processor, error) {
 func (vp *Processor) RunFfmpeg(videoPath string) error {
 	cmd := exec.Command("python", filepath.Join(vp.TrainerPath, "video_to_image.py"), "-v", videoPath, "--fps", strconv.Itoa(vp.FPS))
 
-	var stdoutBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
+	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
@@ -62,11 +60,11 @@ func (vp *Processor) RunFfmpeg(videoPath string) error {
 	return nil
 }
 
-func (vp *Processor) RunColmap(modelPath string) error {
-	cmd := exec.Command("python", filepath.Join(vp.TrainerPath, "convert.py"), "-m", modelPath)
+func (vp *Processor) RunColmap(dataPath string) error {
+	modelName := filepath.Base(dataPath)
+	cmd := exec.Command("xvfb-run", "-a", "python", filepath.Join(vp.TrainerPath, "convert.py"), "-s", "temp", "-m", modelName)
 
-	var stdoutBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
+	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
@@ -85,16 +83,17 @@ func (vp *Processor) Reconstruction(dataPath string) error {
 	cmd := exec.Command("python", filepath.Join(vp.TrainerPath, "train.py"),
 		"--source_path", filepath.Join(dataPath, "undistorted"),
 		"--model_path", modelPath,
-		"--iterations", vp.Iterations,
-		"--resolution 1")
+		"--save_iterations", vp.Iterations,
+		"--checkpoint_iterations", vp.Iterations,
+		"--resolution", "1")
 
 	// 准备缓冲区以存储命令的输出。
-	var stdoutBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
+	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	// 打印训练开始的信息。
 	fmt.Printf("Starting training process for video: %s\n", dataPath)
+	fmt.Println(cmd.Args)
 
 	// 执行命令并处理错误（如果有）。
 	if err := cmd.Run(); err != nil {
@@ -115,8 +114,7 @@ func (vp *Processor) Stylize(dataPath, stylePath string) error {
 		"--iterations", vp.Iterations,
 		"--resolution 1")
 
-	var stdoutBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
+	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	// 打印训练开始的信息。

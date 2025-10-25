@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"myapp/agent"
 	"myapp/config"
@@ -139,7 +140,7 @@ func InitModel(c *gin.Context) {
 		})
 		return
 	}
-	if err := database.StoreInBucket(filepath.Join(fmt.Sprintf("%d", work.ID), dataPath, "point_cloud", "model.ply"), model); err != nil {
+	if err := database.StoreInBucket(filepath.Join(fmt.Sprintf("%d", work.ID), "point_cloud", "model.ply"), model); err != nil {
 		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to store model:%v", err), startTime)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("fail to store model:%v", err),
@@ -156,7 +157,7 @@ func InitModel(c *gin.Context) {
 		return
 	}
 
-	if err := database.StoreInBucket(filepath.Join(fmt.Sprintf("%d", work.ID), dataPath, "checkpoint", "chkpnt.pth"), chkpnt); err != nil {
+	if err := database.StoreInBucket(filepath.Join(fmt.Sprintf("%d", work.ID), "checkpoint", "chkpnt.pth"), chkpnt); err != nil {
 		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to store checkpoint:%v", err), startTime)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("fail to store checkpoint:%v", err),
@@ -194,15 +195,16 @@ func InitModel(c *gin.Context) {
 // 文件参数:
 //   - style_img: 用于风格迁移的风格图像文件
 func Transfer(c *gin.Context) {
+	jsonData := c.PostForm("data")
+
 	var transferInfo struct {
 		WorkID     uint   `json:"id"`
 		WorkName   string `json:"work_name"`
-		Style      string `json:"style"`
-		Weight     string `json:"weight"`
+		IsPublic   bool   `json:"is_public"`
 		Iterations string `json:"iterations"`
 	}
-	if err := c.ShouldBindJSON(&transferInfo); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err})
+	if err := json.Unmarshal([]byte(jsonData), &transferInfo); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON data"})
 		return
 	}
 
@@ -213,13 +215,14 @@ func Transfer(c *gin.Context) {
 		return
 	}
 
-	styleIMGPath := filepath.Join("transfer_img_tmp", uuid.NewString())
+	styleIMGPath := filepath.Join("transfer_img_tmp", uuid.NewString()+".jpg")
 	if err := c.SaveUploadedFile(styleIMGFile, styleIMGPath); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("fail to save style image:%v", err),
 		})
 		return
 	}
+	defer os.Remove(styleIMGPath)
 
 	// 查找原始作品信息
 	var origin models.Work
@@ -237,6 +240,7 @@ func Transfer(c *gin.Context) {
 			UserID:     origin.UserID,
 			WorkName:   transferInfo.WorkName,
 			Status:     "processing",
+			IsPublic:   transferInfo.IsPublic,
 			Iterations: transferInfo.Iterations,
 			ParentID:   services.GetParentID(&origin),
 		}

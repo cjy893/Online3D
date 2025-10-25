@@ -124,7 +124,7 @@ func InitModel(c *gin.Context) {
 	}
 
 	// 将处理结果存储到存储桶
-	if err := database.StoreInBucketWIthDir(fmt.Sprintf("%d", work.ID), dataPath); err != nil {
+	if err := database.StoreInBucketWIthDir(fmt.Sprintf("%d", work.ID), dataPath+"/undistorted"); err != nil {
 		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to store data:%v", err), startTime)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("fail to store data:%v", err),
@@ -132,7 +132,8 @@ func InitModel(c *gin.Context) {
 	}
 
 	// 获取并存储点云模型文件
-	model, err := os.Open(filepath.Join(processor.OutputFolder, fmt.Sprintf("point_cloud/iteration_%s/point_cloud.ply", initInfo.Iterations)))
+	modelPath := filepath.Join(processor.OutputFolder, fmt.Sprintf("point_cloud/iteration_%s/point_cloud.ply", initInfo.Iterations))
+	model, err := os.Open(modelPath)
 	if err != nil {
 		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to find model:%v", err), startTime)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -140,7 +141,9 @@ func InitModel(c *gin.Context) {
 		})
 		return
 	}
-	if err := database.StoreInBucket(filepath.Join(fmt.Sprintf("%d", work.ID), "point_cloud", "model.ply"), model); err != nil {
+
+	targetModelPath := fmt.Sprintf("%d/point_cloud/model.ply", work.ID)
+	if err := database.StoreInBucket(targetModelPath, model); err != nil {
 		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to store model:%v", err), startTime)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("fail to store model:%v", err),
@@ -148,7 +151,8 @@ func InitModel(c *gin.Context) {
 	}
 
 	// 获取并存储检查点文件
-	chkpnt, err := os.Open(filepath.Join(processor.OutputFolder, fmt.Sprintf("chkpnt%s.pth", initInfo.Iterations)))
+	chkpntPath := filepath.Join(processor.OutputFolder, fmt.Sprintf("chkpnt%s.pth", initInfo.Iterations))
+	chkpnt, err := os.Open(chkpntPath)
 	if err != nil {
 		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to find checkpoint:%v", err), startTime)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -157,7 +161,8 @@ func InitModel(c *gin.Context) {
 		return
 	}
 
-	if err := database.StoreInBucket(filepath.Join(fmt.Sprintf("%d", work.ID), "checkpoint", "chkpnt.pth"), chkpnt); err != nil {
+	targetChkpntPath := fmt.Sprintf("%d/checkpoint/chkpnt.pth", work.ID)
+	if err := database.StoreInBucket(targetChkpntPath, chkpnt); err != nil {
 		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to store checkpoint:%v", err), startTime)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("fail to store checkpoint:%v", err),
@@ -264,7 +269,8 @@ func Transfer(c *gin.Context) {
 		})
 		return
 	}
-	defer os.RemoveAll(dataPath)
+	dataPath += fmt.Sprintf("/%d", *work.ParentID)
+	defer os.RemoveAll(filepath.Dir(dataPath))
 
 	// 初始化处理器
 	processor, err := services.NewProcessor(transferInfo.Iterations)
@@ -285,7 +291,8 @@ func Transfer(c *gin.Context) {
 	}
 
 	// 保存处理后的点云模型文件到存储桶
-	model, err := os.Open(filepath.Join(processor.OutputFolder, fmt.Sprintf("point_cloud/iteration_%s/point_cloud.ply", transferInfo.Iterations)))
+	modelPath := filepath.Join(processor.OutputFolder, fmt.Sprintf("point_cloud/iteration_%s/point_cloud.ply", transferInfo.Iterations))
+	model, err := os.Open(modelPath)
 	if err != nil {
 		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to find model:%v", err), startTime)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -293,15 +300,18 @@ func Transfer(c *gin.Context) {
 		})
 		return
 	}
-	if err := database.StoreInBucket(filepath.Join(fmt.Sprintf("%d", work.ID), dataPath, "point_cloud", "model.ply"), model); err != nil {
+
+	targetModelPath := fmt.Sprintf("%d/point_cloud/model.ply", work.ID)
+	if err := database.StoreInBucket(targetModelPath, model); err != nil {
 		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to store model:%v", err), startTime)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("fail to store model:%v", err),
 		})
 	}
 
-	// 保存检查点文件到存储桶
-	chkpnt, err := os.Open(filepath.Join(processor.OutputFolder, fmt.Sprintf("checkpoint%s.pth", transferInfo.Iterations)))
+	// 获取并存储检查点文件
+	chkpntPath := filepath.Join(processor.OutputFolder, fmt.Sprintf("chkpnt%s.pth", transferInfo.Iterations))
+	chkpnt, err := os.Open(chkpntPath)
 	if err != nil {
 		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to find checkpoint:%v", err), startTime)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -310,7 +320,8 @@ func Transfer(c *gin.Context) {
 		return
 	}
 
-	if err := database.StoreInBucket(filepath.Join(fmt.Sprintf("%d", work.ID), dataPath, "checkpoint", "chkpnt.pth"), chkpnt); err != nil {
+	targetChkpntPath := fmt.Sprintf("%d/checkpoint/chkpnt.pth", work.ID)
+	if err := database.StoreInBucket(targetChkpntPath, chkpnt); err != nil {
 		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to store checkpoint:%v", err), startTime)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("fail to store checkpoint:%v", err),

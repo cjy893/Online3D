@@ -94,6 +94,7 @@ func (vp *Processor) Reconstruction(dataPath string) error {
 
 	// 打印训练开始的信息。
 	fmt.Printf("Starting training process for video: %s\n", dataPath)
+	fmt.Println(cmd.Args)
 
 	// 执行命令并处理错误（如果有）。
 	if err := cmd.Run(); err != nil {
@@ -112,13 +113,14 @@ func (vp *Processor) Stylize(dataPath, stylePath string) error {
 		"--start_checkpoint", filepath.Join(dataPath, "checkpoint", "chkpnt.pth"),
 		"--style_img", stylePath,
 		"--iterations", vp.Iterations,
-		"--resolution 1")
+		"--resolution", "1")
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	// 打印训练开始的信息。
 	fmt.Printf("Starting stylizing process for video: %s\n", dataPath)
+	fmt.Println(cmd.String())
 
 	// 执行命令并处理错误（如果有）。
 	if err := cmd.Run(); err != nil {

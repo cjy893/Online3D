@@ -83,6 +83,7 @@ func (vp *Processor) Reconstruction(dataPath string) error {
 	cmd := exec.Command("python", filepath.Join(vp.TrainerPath, "train.py"),
 		"--source_path", filepath.Join(dataPath, "undistorted"),
 		"--model_path", modelPath,
+		"--iterations", vp.Iterations,
 		"--save_iterations", vp.Iterations,
 		"--checkpoint_iterations", vp.Iterations,
 		"--resolution", "1")
@@ -93,7 +94,6 @@ func (vp *Processor) Reconstruction(dataPath string) error {
 
 	// 打印训练开始的信息。
 	fmt.Printf("Starting training process for video: %s\n", dataPath)
-	fmt.Println(cmd.Args)
 
 	// 执行命令并处理错误（如果有）。
 	if err := cmd.Run(); err != nil {
@@ -107,9 +107,9 @@ func (vp *Processor) Reconstruction(dataPath string) error {
 func (vp *Processor) Stylize(dataPath, stylePath string) error {
 	modelPath := filepath.Join(vp.BaseOutputFolder, uuid.NewString())
 	cmd := exec.Command("python", filepath.Join(vp.TrainerPath, "stylize.py"),
-		"--source_path", filepath.Join(dataPath, "undistorted"),
+		"--source_path", filepath.Join(dataPath),
 		"--model_path", modelPath,
-		"--start_checkpoint", filepath.Join(dataPath, "chkpnt.pth"),
+		"--start_checkpoint", filepath.Join(dataPath, "checkpoint", "chkpnt.pth"),
 		"--style_img", stylePath,
 		"--iterations", vp.Iterations,
 		"--resolution 1")

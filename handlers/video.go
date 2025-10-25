@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -42,13 +43,21 @@ func checkUser(c *gin.Context) (*models.User, bool) {
 	// 成功获取用户信息，返回用户信息和成功标志
 	return &user, true
 }
+
+func isValidImage(mimeType string) bool {
+	allowed := map[string]bool{
+		"image/jpeg": true,
+		"image/png":  true,
+	}
+	return allowed[mimeType]
+}
 func UploadVideo(c *gin.Context) {
 	user, ok := checkUser(c)
 	if !ok {
 		return
 	}
 
-	file, err := c.FormFile("video")
+	videoFile, err := c.FormFile("video")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "文件上传失败"})
 		return
@@ -60,15 +69,25 @@ func UploadVideo(c *gin.Context) {
 		return
 	}
 
-	ext := filepath.Ext(file.Filename)
-	fileUUID := uuid.New().String()
-	filePath := filepath.Join("temp", fileUUID, fileUUID+ext)
+	isPublic := c.PostForm("is_public") == "true"
 
-	if err := c.SaveUploadedFile(file, filePath); err != nil {
+	coverFile, _ := c.FormFile("cover")
+
+	ext := filepath.Ext(videoFile.Filename)
+	videoFileUUID := uuid.New().String()
+	videoFilePath := filepath.Join("temp", videoFileUUID, videoFileUUID+ext)
+
+	var coverFilePath string
+	if coverFile != nil {
+		ext = filepath.Ext(coverFile.Filename)
+		coverFilePath = filepath.Join("temp", videoFileUUID, videoFileUUID+ext)
+	}
+
+	if err := c.SaveUploadedFile(videoFile, videoFilePath); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "文件保存失败"})
 		return
 	}
-	defer os.RemoveAll(filepath.Dir(filePath))
+	defer os.RemoveAll(filepath.Dir(videoFilePath))
 
 	tx := config.Conf.DB.Begin()
 	defer func() {
@@ -78,9 +97,12 @@ func UploadVideo(c *gin.Context) {
 	}()
 
 	var video = models.Video{
-		UserID: user.ID,
-		Title:  title,
+		UserID:   user.ID,
+		Title:    title,
+		CoverUrl: "default",
+		IsPublic: isPublic,
 	}
+
 	if err := tx.Create(&video).Error; err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -89,7 +111,23 @@ func UploadVideo(c *gin.Context) {
 		return
 	}
 
-	fileReader, err := os.Open(filePath)
+	if coverFile != nil {
+		if !isValidImage(coverFile.Header.Get("Content-Type")) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "仅支持JPEG或PNG格式的封面图片"})
+			return
+		}
+
+		coverUrl := fmt.Sprintf("cv%d", video.ID)
+		if err := tx.Model(&video).Update("cover_url", coverUrl).Error; err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": fmt.Sprintf("fail to update video_cover:%v", err),
+			})
+			return
+		}
+	}
+
+	fileReader, err := os.Open(videoFilePath)
 	if err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -98,7 +136,7 @@ func UploadVideo(c *gin.Context) {
 		return
 	}
 	defer fileReader.Close()
-	if err := database.StoreInBucket(fmt.Sprintf("%d", video.ID), "video", fileReader); err != nil {
+	if err := database.StoreInBucket(fmt.Sprintf("videos/%d.mp4", video.ID), fileReader); err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("fail to upload video:%v", err),
@@ -106,11 +144,30 @@ func UploadVideo(c *gin.Context) {
 		return
 	}
 
+	if coverFile != nil {
+		fileReader, err = os.Open(coverFilePath)
+		if err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": fmt.Sprintf("fail to open file:%v", err),
+			})
+			return
+		}
+		if err := database.StoreInBucket(fmt.Sprintf("covers/%d.jpg", video.ID), fileReader); err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": fmt.Sprintf("fail to upload cover:%v", err),
+			})
+			return
+		}
+	}
+
 	if err := tx.Commit().Error; err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("fail to commit :%v", err),
 		})
+		return
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
@@ -161,5 +218,25 @@ func ShowVideo(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "视频查询成功",
 		"videos":  videoInfos,
+	})
+}
+
+func SearchVideos(c *gin.Context) {
+	q := c.Query("q")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize := 20
+
+	var videos []models.Video
+	if err := config.Conf.DB.Where("title LIKE ?", "%"+q+"%").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Find(&videos).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "视频查询失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "视频查询成功",
+		"videos":  videos,
 	})
 }

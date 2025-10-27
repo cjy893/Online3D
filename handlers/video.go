@@ -5,13 +5,13 @@ import (
 	"myapp/config"
 	"myapp/database"
 	"myapp/models"
+	"myapp/services/videoService"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 // checkUser 检查并返回当前请求的用户信息
@@ -23,26 +23,6 @@ import (
 //
 //	*models.User: 用户信息的指针，如果用户存在且验证通过
 //	bool: 表示是否成功获取到用户信息
-func checkUser(c *gin.Context) (*models.User, bool) {
-	// 尝试从上下文中获取用户ID，如果不存在，则返回未认证的用户错误
-	userID, exists := c.Get("userID")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证的用户"})
-		return nil, false
-	}
-
-	// 初始化用户模型
-	var user models.User
-
-	// 使用用户ID查询数据库中的用户信息，如果查询失败，则返回内部服务器错误
-	if err := config.Conf.DB.First(&user, userID).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "未找到用户"})
-		return nil, false
-	}
-
-	// 成功获取用户信息，返回用户信息和成功标志
-	return &user, true
-}
 
 func isValidImage(mimeType string) bool {
 	allowed := map[string]bool{
@@ -52,8 +32,9 @@ func isValidImage(mimeType string) bool {
 	return allowed[mimeType]
 }
 func UploadVideo(c *gin.Context) {
-	user, ok := checkUser(c)
-	if !ok {
+	user, err := videoService.CheckUser(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -73,21 +54,26 @@ func UploadVideo(c *gin.Context) {
 
 	coverFile, _ := c.FormFile("cover")
 
-	ext := filepath.Ext(videoFile.Filename)
-	videoFileUUID := uuid.New().String()
-	videoFilePath := filepath.Join("temp", videoFileUUID, videoFileUUID+ext)
-
-	var coverFilePath string
-	if coverFile != nil {
-		ext = filepath.Ext(coverFile.Filename)
-		coverFilePath = filepath.Join("temp", videoFileUUID, videoFileUUID+ext)
-	}
-
-	if err := c.SaveUploadedFile(videoFile, videoFilePath); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "文件保存失败"})
+	videoPath, err := videoService.SaveVideo(c, videoFile)
+	defer os.Remove(filepath.Dir(videoPath))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
 		return
 	}
-	defer os.RemoveAll(filepath.Dir(videoFilePath))
+
+	var coverPath string
+	if coverFile != nil {
+		coverPath, err = videoService.SaveCover(c, coverFile)
+		defer os.Remove(coverPath)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": err.Error(),
+			})
+			return
+		}
+	}
 
 	tx := config.Conf.DB.Begin()
 	defer func() {
@@ -103,10 +89,9 @@ func UploadVideo(c *gin.Context) {
 		IsPublic: isPublic,
 	}
 
-	if err := tx.Create(&video).Error; err != nil {
-		tx.Rollback()
+	if err := videoService.CreateVideo(&video, videoPath); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to upload video:%v", err),
+			"error": fmt.Sprintf("fail to create video:%v", err),
 		})
 		return
 	}
@@ -127,25 +112,8 @@ func UploadVideo(c *gin.Context) {
 		}
 	}
 
-	fileReader, err := os.Open(videoFilePath)
-	if err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to open file:%v", err),
-		})
-		return
-	}
-	defer fileReader.Close()
-	if err := database.StoreInBucket(fmt.Sprintf("videos/%d.mp4", video.ID), fileReader); err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to upload video:%v", err),
-		})
-		return
-	}
-
 	if coverFile != nil {
-		fileReader, err = os.Open(coverFilePath)
+		fileReader, err := os.Open(coverPath)
 		if err != nil {
 			tx.Rollback()
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -186,8 +154,9 @@ func UploadVideo(c *gin.Context) {
 //   - 返回标准化JSON响应
 func ShowVideo(c *gin.Context) {
 	// 用户身份验证检查
-	user, ok := checkUser(c)
-	if !ok {
+	user, err := videoService.CheckUser(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 

@@ -2,9 +2,12 @@ package agent
 
 import (
 	"context"
+	"myapp/agent/tools"
 
 	"github.com/cloudwego/eino-ext/components/model/deepseek"
+	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
+	"github.com/cloudwego/eino/flow/agent/react"
 	"github.com/cloudwego/eino/schema"
 )
 
@@ -26,32 +29,12 @@ func InitAgent() error {
 		return err
 	}
 
-	tools, toolInfos := TransferInfoTools(ctx)
-	err = model.BindTools(toolInfos)
-	if err != nil {
-		return err
-	}
-
-	todoToolsNode, err := compose.NewToolNode(context.Background(), &compose.ToolsNodeConfig{
-		Tools: tools,
+	agent, err := react.NewAgent(ctx, &react.AgentConfig{
+		ToolCallingModel: model,
+		ToolsConfig: compose.ToolsNodeConfig{
+			Tools: []tool.BaseTool{tools.TransferFunc()},
+		},
 	})
-	if err != nil {
-		return err
-	}
-
-	chain := compose.NewChain[[]*schema.Message, []*schema.Message]()
-	chain.
-		AppendChatModel(model, compose.WithNodeName("chat_model")).
-		AppendToolsNode(todoToolsNode, compose.WithNodeName("tools"))
-
-	agent, err := chain.Compile(ctx)
-	if err != nil {
-		return err
-	}
-
-	ServerAgent.runnable = agent
-
-	return nil
 }
 
 func (a *Agent) Invoke(ctx context.Context, content string) ([]*schema.Message, error) {

@@ -3,11 +3,10 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"myapp/agent"
 	"myapp/config"
 	"myapp/database"
 	"myapp/models"
-	"myapp/services"
+	"myapp/services/workService"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -86,7 +85,7 @@ func InitModel(c *gin.Context) {
 	defer os.RemoveAll(filepath.Dir(videoPath))
 
 	// 创建处理器实例
-	processor, err := services.NewProcessor(initInfo.Iterations)
+	processor, err := workService.NewProcessor(initInfo.Iterations)
 	if err != nil {
 		updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to train the model:%v", err), time.Now())
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -247,7 +246,7 @@ func Transfer(c *gin.Context) {
 			Status:     "processing",
 			IsPublic:   transferInfo.IsPublic,
 			Iterations: transferInfo.Iterations,
-			ParentID:   services.GetParentID(&origin),
+			ParentID:   workService.GetParentID(&origin),
 		}
 		return tx.Create(&work).Error
 	})
@@ -273,7 +272,7 @@ func Transfer(c *gin.Context) {
 	defer os.RemoveAll(filepath.Dir(dataPath))
 
 	// 初始化处理器
-	processor, err := services.NewProcessor(transferInfo.Iterations)
+	processor, err := workService.NewProcessor(transferInfo.Iterations)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"init error": "fail to train the model",
@@ -342,28 +341,6 @@ func Transfer(c *gin.Context) {
 	})
 }
 
-func TransferByAIAgent(c *gin.Context) {
-	var transferInfo struct {
-		UserInput string `json:"userInput"`
-	}
-	if err := c.ShouldBindJSON(&transferInfo); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err})
-		return
-	}
-
-	resp, err := agent.ServerAgent.Invoke(c.Request.Context(), transferInfo.UserInput)
-	response := gin.H{
-		"message": resp,
-	}
-	if err != nil {
-		response["error"] = err.Error()
-		c.JSON(http.StatusInternalServerError, response)
-		return
-	}
-
-	c.JSON(http.StatusOK, response)
-}
-
 // updateWorkStatus 更新工作的状态。
 // 参数:
 //
@@ -407,8 +384,9 @@ func updateWorkStatus(workID uint, status, errorLog string, startTime time.Time)
 
 // TODO
 func UploadWork(c *gin.Context) {
-	user, ok := checkUser(c)
-	if !ok {
+	user, err := workService.CheckUser(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -509,9 +487,9 @@ func GetWork(c *gin.Context) {
 }
 
 func ShowWork(c *gin.Context) {
-	user, ok := checkUser(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证的用户"})
+	user, err := workService.CheckUser(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 

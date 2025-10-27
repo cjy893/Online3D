@@ -1,4 +1,4 @@
-package services
+package workService
 
 import (
 	"fmt"
@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
@@ -179,4 +180,21 @@ func GetParentID(origin *models.Work) *uint {
 		return &origin.ID
 	}
 	return origin.ParentID
+}
+
+func CheckUser(c *gin.Context) (*models.User, error) {
+	// 尝试从上下文中获取用户ID，如果不存在，则返回未认证的用户错误
+	userID, exists := c.Get("userID")
+	if !exists {
+		return nil, fmt.Errorf("未认证的用户")
+	}
+
+	// 初始化用户模型
+	var user models.User
+
+	if err := config.Conf.DB.First(&user, userID).Error; err != nil {
+		return nil, fmt.Errorf("用户不存在:%v", err)
+	}
+
+	return &user, nil
 }

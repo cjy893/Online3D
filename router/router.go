@@ -32,7 +32,6 @@ func RouterConfig() *gin.Engine {
 		auth.POST("/video/upload", handlers.UploadVideo)
 		auth.POST("/work/init", handlers.InitModel)
 		auth.POST("/work/transfer", handlers.Transfer)
-		auth.POST("/work/ai/transfer", handlers.TransferByAIAgent)
 		auth.GET("/video/", handlers.ShowVideo)
 		auth.POST("/work/upload", handlers.UploadWork)
 		auth.GET("/work/", handlers.ShowWork)

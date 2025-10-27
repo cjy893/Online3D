@@ -3,6 +3,7 @@ package handlers
 import (
 	"myapp/config"
 	"myapp/models"
+	"myapp/services/authService"
 	"myapp/utils"
 	"net/http"
 
@@ -20,50 +21,12 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	// 开启事务
-	tx := config.Conf.DB.Begin()
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
-
-	// 检查用户名是否已存在（使用事务内的查询）
-	var existing models.User
-	if err := tx.Where("account = ?", user.Account).First(&existing).Error; err == nil {
-		tx.Rollback()
-		c.JSON(http.StatusConflict, gin.H{"error": "用户名已存在"})
+	if err := authService.CheckUser(user); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
-	//检查邮箱是否已存在
-	var existingEmail models.User
-	if err := tx.Where("email = ?", user.Email).First(&existingEmail).Error; err == nil {
-		tx.Rollback()
-		c.JSON(http.StatusConflict, gin.H{"error": "邮箱已被注册"})
-		return
-	}
-
-	// 哈希密码
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
-	if err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "密码加密失败"})
-		return
-	}
-	user.Password = string(hashedPassword)
-
-	// 创建用户记录
-	if err := tx.Create(&user).Error; err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "用户创建失败"})
-		return
-	}
-
-	// 提交事务
-	if err := tx.Commit().Error; err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "事务提交失败"})
+	if err := authService.CreateUser(&user); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -86,18 +49,14 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// 定义用户变量，用于存储从数据库中查询到的用户信息
-	var user models.User
-	// 根据提供的标识符（用户名或邮箱）查询用户信息
-	if err := config.Conf.DB.Where("account = ? OR email = ?", credentials.Identifier, credentials.Identifier).First(&user).Error; err != nil {
-		// 如果查询失败或用户不存在，返回401错误响应
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名/邮箱错误"})
+	user, err := authService.GetUserByIdentifier(credentials.Identifier)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
-	// 验证用户密码是否正确
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(credentials.Password)); err != nil {
-		// 如果密码不正确，返回401错误响应
+		// 如果密码不匹配，返回401错误响应
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "密码错误"})
 		return
 	}

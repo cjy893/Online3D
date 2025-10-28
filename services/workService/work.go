@@ -3,12 +3,15 @@ package workService
 import (
 	"fmt"
 	"myapp/config"
+	"myapp/database"
 	"myapp/models"
+	"myapp/services/websocket"
 	"myapp/utils"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -197,7 +200,7 @@ func findPlyPath(iterations, filePath string) (string, error) {
 // getParentID 返回父作品的ID
 // 如果origin.Parent为nil或origin.Parent.ID为nil，则返回origin.ID的指针
 // 否则返回origin.Parent.ID
-func GetParentID(origin *models.Work) *uint {
+func getParentID(origin *models.Work) *uint {
 	if origin.Parent == nil {
 		return &origin.ID
 	}
@@ -252,7 +255,7 @@ func NewWork(transferInfo TransferInfo, origin models.Work) (models.Work, error)
 			Status:     "processing",
 			IsPublic:   transferInfo.IsPublic,
 			Iterations: transferInfo.Iterations,
-			ParentID:   GetParentID(&origin),
+			ParentID:   getParentID(&origin),
 		}
 		return tx.Create(&work).Error
 	})
@@ -261,4 +264,217 @@ func NewWork(transferInfo TransferInfo, origin models.Work) (models.Work, error)
 	}
 
 	return work, nil
+}
+
+func PrepareData(parentID uint) (string, error) {
+	dataPath := filepath.Join("transfer_tmp", uuid.NewString())
+	err := database.RetrieveFromBucketWithDir(fmt.Sprintf("%d", parentID), dataPath)
+	if err != nil {
+		return "", err
+	}
+	dataPath += fmt.Sprintf("/%d", parentID)
+	return dataPath, nil
+}
+
+func SaveModel(outputFolder, iterations string, workID uint) error {
+	modelPath := filepath.Join(outputFolder, fmt.Sprintf("point_cloud/iteration_%s/point_cloud.ply", iterations))
+	model, err := os.Open(modelPath)
+	if err != nil {
+		return err
+	}
+	defer model.Close()
+
+	targetModelPath := fmt.Sprintf("%d/point_cloud/model.ply", workID)
+	if err := database.StoreInBucket(targetModelPath, model); err != nil {
+		return err
+	}
+	return nil
+}
+
+func SaveCheckpoint(outputFolder, iterations string, workID uint) error {
+	chkpntPath := filepath.Join(outputFolder, fmt.Sprintf("chkpnt%s.pth", iterations))
+	chkpnt, err := os.Open(chkpntPath)
+	if err != nil {
+		return err
+	}
+	defer chkpnt.Close()
+
+	targetChkpntPath := fmt.Sprintf("%d/checkpoint/chkpnt.pth", workID)
+	if err := database.StoreInBucket(targetChkpntPath, chkpnt); err != nil {
+		return err
+	}
+	return nil
+}
+
+// updateWorkStatus 更新工作的状态。
+// 参数:
+//
+//	workID - 工作的唯一标识符。
+//	status - 工作的新状态。
+//	errorLog - 工作执行过程中遇到的错误日志。
+//	startTime - 工作开始的时间。
+//
+// 返回值:
+//
+//	如果更新过程中发生错误，则返回错误。
+func UpdateWorkStatus(workID uint, status, errorLog string, startTime time.Time) error {
+	// 使用事务来更新工作状态，确保数据的一致性。
+	err := config.Conf.DB.Transaction(func(tx *gorm.DB) error {
+		// 初始化要更新的字段。
+		updates := map[string]interface{}{"status": status}
+
+		// 当工作完成或失败时，更新处理时间和文件路径。
+		if status == "completed" || status == "splat failed" {
+			updates["process_time"] = int(time.Since(startTime).Seconds())
+		}
+
+		// 如果有错误日志，则更新错误日志字段。
+		if errorLog != "" {
+			updates["error_log"] = errorLog
+		}
+
+		// 执行更新操作。
+		return tx.Model(&models.Work{}).Where("id = ?", workID).Updates(updates).Error
+	})
+
+	// 如果更新过程中发生错误，返回详细的错误信息。
+	if err != nil {
+		return fmt.Errorf("status update error: %v", err)
+	}
+
+	// 更新成功，返回nil表示没有发生错误。
+	return nil
+}
+
+func ProcessTasks(task *websocket.Task) {
+	go func(t *websocket.Task) {
+		var result string
+		var err error
+
+		switch t.Type {
+		case "init_model":
+			result, err = processInitModelTask(t)
+		case "transfer":
+			result, err = processTransferTask(t)
+		default:
+			result = "unknown_task_type"
+			err = fmt.Errorf("unknown task type: %s", t.Type)
+		}
+
+		// 通过 WebSocket 通知前端结果
+		if config.Conf.Hub != nil {
+			message := websocket.Message{Status: result, Message: result, Type: t.Type, WorkID: t.WorkID, Time: time.Now(), Error: err.Error()}
+			config.Conf.Hub.BroadcastToUser(t.UserID, message)
+		}
+	}(task)
+}
+
+func processInitModelTask(task *websocket.Task) (string, error) {
+	initInfo := task.Data.(InitInfo)
+
+	// 从存储桶中检索视频文件
+	videoPath := fmt.Sprintf("videos/%d.mp4", initInfo.VideoID)
+	videoPath, err := database.RetrieveFromBucket(videoPath)
+	if err != nil {
+		UpdateWorkStatus(task.WorkID, "failed", fmt.Sprintf("fail to retrieve video:%v", err), time.Now())
+		return "failed", fmt.Errorf("fail to find video:%v", err)
+	}
+	defer os.RemoveAll(filepath.Dir(videoPath))
+
+	// 创建处理器实例
+	processor, err := NewProcessor(initInfo.Iterations)
+	if err != nil {
+		UpdateWorkStatus(task.WorkID, "failed", fmt.Sprintf("fail to train the model:%v", err), time.Now())
+		return "failed", fmt.Errorf("fail to train the model:%v", err)
+	}
+
+	startTime := time.Now()
+	// 提取视频帧
+	if err := processor.RunFfmpeg(videoPath); err != nil {
+		UpdateWorkStatus(task.WorkID, "failed", fmt.Sprintf("fail to generate pics:%v", err), startTime)
+		return "failed", fmt.Errorf("fail to generate pics:%v", err)
+	}
+
+	dataPath := filepath.Dir(videoPath)
+	// 运行COLMAP进行相机参数估计
+	if err := processor.RunColmap(dataPath); err != nil {
+		UpdateWorkStatus(task.WorkID, "failed", fmt.Sprintf("fail to estimate the camera:%v", err), startTime)
+		return "failed", fmt.Errorf("fail to estimate the camera:%v", err)
+	}
+
+	// 执行三维重建
+	if err := processor.Reconstruction(dataPath); err != nil {
+		UpdateWorkStatus(task.WorkID, "failed", fmt.Sprintf("fail to reconstruction:%v", err), startTime)
+		return "failed", fmt.Errorf("fail to reconstruction:%v", err)
+	}
+
+	// 将处理结果存储到存储桶
+	if err := database.StoreInBucketWIthDir(fmt.Sprintf("%d", task.WorkID), dataPath+"/undistorted"); err != nil {
+		UpdateWorkStatus(task.WorkID, "failed", fmt.Sprintf("fail to store data:%v", err), startTime)
+		return "failed", fmt.Errorf("fail to store data:%v", err)
+	}
+
+	// 获取并存储点云模型文件
+	if err := SaveModel(processor.OutputFolder, initInfo.Iterations, task.WorkID); err != nil {
+		UpdateWorkStatus(task.WorkID, "failed", fmt.Sprintf("fail to save model:%v", err), startTime)
+		return "failed", fmt.Errorf("fail to save model:%v", err)
+	}
+	// 获取并存储检查点文件
+	if err := SaveCheckpoint(processor.OutputFolder, initInfo.Iterations, task.WorkID); err != nil {
+		UpdateWorkStatus(task.WorkID, "failed", fmt.Sprintf("fail to save checkpoint:%v", err), startTime)
+		return "failed", fmt.Errorf("fail to save checkpoint:%v", err)
+	}
+
+	// 更新作品状态为完成
+	UpdateWorkStatus(task.WorkID, "completed", "", startTime)
+
+	return "completed", nil
+}
+
+func processTransferTask(task *websocket.Task) (string, error) {
+	taskData := task.Data.(struct {
+		TransferInfo   TransferInfo `json:"transfer_info"`
+		StyleImagePath string       `json:"style_image_path"`
+		WorkID         uint         `json:"work_id"`
+	})
+
+	work, err := QueryWork(task.WorkID)
+	// 从存储桶检索原始作品数据到本地
+	dataPath, err := PrepareData(*work.ParentID)
+	if err != nil {
+		UpdateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to stylize:%v", err), time.Now())
+		return "failed", fmt.Errorf("fail to find parent:%v", err)
+	}
+	defer os.RemoveAll(filepath.Dir(dataPath))
+
+	// 初始化处理器
+	processor, err := NewProcessor(taskData.TransferInfo.Iterations)
+	if err != nil {
+		UpdateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to stylize:%v", err), time.Now())
+		return "failed", fmt.Errorf("fail to train the model:%v", err)
+	}
+
+	// 执行风格迁移处理
+	startTime := time.Now()
+	if err := processor.Stylize(dataPath, taskData.StyleImagePath); err != nil {
+		UpdateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to stylize:%v", err), startTime)
+		return "failed", fmt.Errorf("fail to stylize:%v", err)
+	}
+
+	// 保存处理后的点云模型文件到存储桶
+	if err := SaveModel(processor.OutputFolder, taskData.TransferInfo.Iterations, work.ID); err != nil {
+		UpdateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to stylize:%v", err), startTime)
+		return "failed", fmt.Errorf("fail to save model:%v", err)
+	}
+
+	// 获取并存储检查点文件
+	if err := SaveCheckpoint(processor.OutputFolder, taskData.TransferInfo.Iterations, work.ID); err != nil {
+		UpdateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to stylize:%v", err), startTime)
+		return "failed", fmt.Errorf("fail to save checkpoint:%v", err)
+	}
+
+	// 更新状态为完成
+	UpdateWorkStatus(work.ID, "completed", "", startTime)
+
+	return "completed", nil
 }

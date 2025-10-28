@@ -3,10 +3,13 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"myapp/services/websocket"
 	"myapp/services/workService"
+	"time"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
+	"github.com/google/uuid"
 )
 
 func GetWorkTool() tool.InvokableTool {
@@ -53,8 +56,14 @@ type QueryWorkParams struct {
 	UserID uint `json:"user_id"`
 }
 
-func WorkTransferTool() tool.InvokableTool {
+func GetStyleImageTool() tool.InvokableTool {
 	panic("TODO")
+}
+
+type ToolStyleImage struct{}
+
+func WorkTransferTool() tool.InvokableTool {
+	return &ToolTransferWork{}
 }
 
 type ToolTransferWork struct{}
@@ -81,7 +90,12 @@ func (t *ToolTransferWork) Info(ctx context.Context) (*schema.ToolInfo, error) {
 			},
 			"iterations": {
 				Type:     "string",
-				Desc:     "number of iterations for the work to transfer",
+				Desc:     "Number of iterations for the work to transfer",
+				Required: true,
+			},
+			"style_image_path": {
+				Type:     "string",
+				Desc:     "local Path of the style image to be transferred",
 				Required: true,
 			},
 		}),
@@ -89,7 +103,7 @@ func (t *ToolTransferWork) Info(ctx context.Context) (*schema.ToolInfo, error) {
 }
 
 func (t *ToolTransferWork) InvokableRun(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (string, error) {
-	p := &workService.TransferInfo{}
+	p := &TransferWorkParams{}
 	err := json.Unmarshal([]byte(argumentsInJSON), p)
 	if err != nil {
 		return "", err
@@ -100,15 +114,36 @@ func (t *ToolTransferWork) InvokableRun(ctx context.Context, argumentsInJSON str
 		return "", err
 	}
 
-	work, err := workService.NewWork(*p, origin)
+	work, err := workService.NewWork(p.TransferInfo, origin)
 	if err != nil {
 		return "", err
 	}
 
-	processor, err := workService.NewProcessor(p.Iterations)
-	if err != nil {
-		return "", err
+	taskData := struct {
+		TransferInfo   workService.TransferInfo `json:"transfer_info"`
+		StyleImagePath string                   `json:"style_image_path"`
+		WorkID         uint                     `json:"work_id"`
+	}{
+		TransferInfo:   p.TransferInfo,
+		StyleImagePath: p.StyleImagePath,
+		WorkID:         work.ID,
 	}
 
-	panic("TODO")
+	task := websocket.Task{
+		Data:      taskData,
+		ID:        uuid.New().String(),
+		StartTime: time.Now(),
+		Type:      "transfer",
+		UserID:    work.UserID,
+		WorkID:    work.ID,
+	}
+
+	workService.ProcessTasks(&task)
+
+	return "Work transfer start successfully", nil
+}
+
+type TransferWorkParams struct {
+	workService.TransferInfo
+	StyleImagePath string `json:"style_image_path"`
 }

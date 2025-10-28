@@ -3,6 +3,7 @@ package config
 
 import (
 	"myapp/models"
+	"myapp/services/websocket"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -15,6 +16,8 @@ import (
 type AppConfig struct {
 	DB         *gorm.DB
 	MINIO      *minio.Client
+	Hub        *websocket.Hub
+	TaskQueue  *websocket.TaskQueue
 	JWTSecret  string
 	BucketName string
 	AccessKey  string
@@ -64,4 +67,9 @@ func LoadConfig() {
 		panic("failed to connect minio: " + err.Error())
 	}
 	Conf.MINIO = minioClient
+
+	Conf.Hub = websocket.NewHub()
+	go Conf.Hub.Run()
+
+	Conf.TaskQueue = &websocket.TaskQueue{Tasks: make(chan *websocket.Task, 10)}
 }

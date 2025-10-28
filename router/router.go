@@ -19,6 +19,8 @@ func RouterConfig() *gin.Engine {
 	router.POST("/register", handlers.Register)
 	router.POST("/login", handlers.Login)
 
+	router.GET("/ws")
+
 	search := router.Group("/search")
 	{
 		search.GET("/videos", handlers.SearchVideos)

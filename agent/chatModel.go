@@ -5,6 +5,7 @@ import (
 	"myapp/agent/tools"
 
 	"github.com/cloudwego/eino-ext/components/model/deepseek"
+	"github.com/cloudwego/eino/callbacks"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/flow/agent/react"
@@ -16,6 +17,8 @@ type Agent struct {
 }
 
 var ServerAgent Agent
+
+var handlers []callbacks.Handler
 
 func InitAgent() error {
 
@@ -32,7 +35,7 @@ func InitAgent() error {
 	agent, err := react.NewAgent(ctx, &react.AgentConfig{
 		ToolCallingModel: model,
 		ToolsConfig: compose.ToolsNodeConfig{
-			Tools: []tool.BaseTool{tools.GetWorkTool()},
+			Tools: []tool.BaseTool{tools.GetWorkTool(), tools.GetStyleImageTool(), tools.WorkTransferTool()},
 		},
 	})
 

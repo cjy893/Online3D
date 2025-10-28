@@ -6,6 +6,7 @@ import (
 	"myapp/config"
 	"myapp/database"
 	"myapp/models"
+	"myapp/services/websocket"
 	"myapp/services/workService"
 	"net/http"
 	"os"
@@ -58,7 +59,7 @@ func InitModel(c *gin.Context) {
 		return tx.Create(&work).Error
 	})
 	if err != nil {
-		updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to initialize video model:%v", err), time.Now())
+		workService.UpdateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to initialize video model:%v", err), time.Now())
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"init error": "Failed to initialize video model",
 			"videoid":    initInfo.VideoID,
@@ -66,109 +67,16 @@ func InitModel(c *gin.Context) {
 		return
 	}
 
-	// 从存储桶中检索视频文件
-	videoPath := fmt.Sprintf("videos/%d.mp4", video.ID)
-	videoPath, err = database.RetrieveFromBucket(videoPath)
-	if err != nil {
-		updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to retrieve video:%v", err), time.Now())
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to find video:%v", err),
-		})
-		return
-	}
-	defer os.RemoveAll(filepath.Dir(videoPath))
-
-	// 创建处理器实例
-	processor, err := workService.NewProcessor(initInfo.Iterations)
-	if err != nil {
-		updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to train the model:%v", err), time.Now())
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"init error": "fail to train the model",
-		})
-		return
+	task := websocket.Task{
+		Data:      initInfo,
+		ID:        uuid.New().String(),
+		StartTime: time.Now(),
+		Type:      "stylize",
+		UserID:    work.UserID,
+		WorkID:    work.ID,
 	}
 
-	startTime := time.Now()
-	// 提取视频帧
-	if err := processor.RunFfmpeg(videoPath); err != nil {
-		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to generate pics:%v", err), startTime)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to generate pics:%v", err),
-		})
-		return
-	}
-
-	dataPath := filepath.Dir(videoPath)
-	// 运行COLMAP进行相机参数估计
-	if err := processor.RunColmap(dataPath); err != nil {
-		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to estimate the camera:%v", err), startTime)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to estimate the camera:%v", err),
-		})
-	}
-
-	// 执行三维重建
-	if err := processor.Reconstruction(dataPath); err != nil {
-		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to reconstruction:%v", err), startTime)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to reconstruction:%v", err),
-		})
-		return
-	}
-
-	// 将处理结果存储到存储桶
-	if err := database.StoreInBucketWIthDir(fmt.Sprintf("%d", work.ID), dataPath+"/undistorted"); err != nil {
-		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to store data:%v", err), startTime)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to store data:%v", err),
-		})
-	}
-
-	// 获取并存储点云模型文件
-	modelPath := filepath.Join(processor.OutputFolder, fmt.Sprintf("point_cloud/iteration_%s/point_cloud.ply", initInfo.Iterations))
-	model, err := os.Open(modelPath)
-	if err != nil {
-		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to find model:%v", err), startTime)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to find model:%v", err),
-		})
-		return
-	}
-
-	targetModelPath := fmt.Sprintf("%d/point_cloud/model.ply", work.ID)
-	if err := database.StoreInBucket(targetModelPath, model); err != nil {
-		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to store model:%v", err), startTime)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to store model:%v", err),
-		})
-	}
-
-	// 获取并存储检查点文件
-	chkpntPath := filepath.Join(processor.OutputFolder, fmt.Sprintf("chkpnt%s.pth", initInfo.Iterations))
-	chkpnt, err := os.Open(chkpntPath)
-	if err != nil {
-		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to find checkpoint:%v", err), startTime)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to find checkpoint:%v", err),
-		})
-		return
-	}
-
-	targetChkpntPath := fmt.Sprintf("%d/checkpoint/chkpnt.pth", work.ID)
-	if err := database.StoreInBucket(targetChkpntPath, chkpnt); err != nil {
-		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to store checkpoint:%v", err), startTime)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to store checkpoint:%v", err),
-		})
-	}
-
-	// 更新作品状态为完成
-	if updateErr := updateWorkStatus(work.ID, "completed", "", startTime); updateErr != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"status error": updateErr.Error(),
-		})
-		return
-	}
+	workService.ProcessTasks(&task)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Model initialization and processing completed successfully",
@@ -225,133 +133,37 @@ func Transfer(c *gin.Context) {
 	if err != nil {
 		// 如果创建work记录失败，返回错误响应
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"init error": "Failed to transfer model",
-			"work_id":    transferInfo.WorkID,
+			"error":   fmt.Sprintf("fail to create new work record:%v", err),
+			"work_id": transferInfo.WorkID,
 		})
 		return
 	}
 
-	// 从存储桶检索原始作品数据到本地
-	dataPath := filepath.Join("transfer_tmp", uuid.NewString())
-	err = database.RetrieveFromBucketWithDir(fmt.Sprintf("%d", *work.ParentID), dataPath)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to find work:%v", err),
-		})
-		return
-	}
-	dataPath += fmt.Sprintf("/%d", *work.ParentID)
-	defer os.RemoveAll(filepath.Dir(dataPath))
-
-	// 初始化处理器
-	processor, err := workService.NewProcessor(transferInfo.Iterations)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"init error": "fail to train the model",
-		})
-		return
+	taskData := struct {
+		TransferInfo   workService.TransferInfo `json:"transfer_info"`
+		StyleImagePath string                   `json:"style_image_path"`
+		WorkID         uint                     `json:"work_id"`
+	}{
+		TransferInfo:   transferInfo,
+		StyleImagePath: styleIMGPath,
+		WorkID:         work.ID,
 	}
 
-	// 执行风格迁移处理
-	startTime := time.Now()
-	if err := processor.Stylize(dataPath, styleIMGPath); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to stylize:%v", err),
-		})
-		return
+	task := websocket.Task{
+		Data:      taskData,
+		ID:        uuid.New().String(),
+		StartTime: time.Now(),
+		Type:      "transfer",
+		UserID:    work.UserID,
+		WorkID:    work.ID,
 	}
 
-	// 保存处理后的点云模型文件到存储桶
-	modelPath := filepath.Join(processor.OutputFolder, fmt.Sprintf("point_cloud/iteration_%s/point_cloud.ply", transferInfo.Iterations))
-	model, err := os.Open(modelPath)
-	if err != nil {
-		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to find model:%v", err), startTime)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to find model:%v", err),
-		})
-		return
-	}
-
-	targetModelPath := fmt.Sprintf("%d/point_cloud/model.ply", work.ID)
-	if err := database.StoreInBucket(targetModelPath, model); err != nil {
-		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to store model:%v", err), startTime)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to store model:%v", err),
-		})
-	}
-
-	// 获取并存储检查点文件
-	chkpntPath := filepath.Join(processor.OutputFolder, fmt.Sprintf("chkpnt%s.pth", transferInfo.Iterations))
-	chkpnt, err := os.Open(chkpntPath)
-	if err != nil {
-		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to find checkpoint:%v", err), startTime)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to find checkpoint:%v", err),
-		})
-		return
-	}
-
-	targetChkpntPath := fmt.Sprintf("%d/checkpoint/chkpnt.pth", work.ID)
-	if err := database.StoreInBucket(targetChkpntPath, chkpnt); err != nil {
-		_ = updateWorkStatus(work.ID, "failed", fmt.Sprintf("fail to store checkpoint:%v", err), startTime)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to store checkpoint:%v", err),
-		})
-	}
-
-	// 更新状态为完成
-	if updateErr := updateWorkStatus(work.ID, "completed", "", startTime); updateErr != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"status error": updateErr.Error(),
-		})
-		return
-	}
+	workService.ProcessTasks(&task)
 
 	// 返回成功响应
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Model transfer completed successfully",
 	})
-}
-
-// updateWorkStatus 更新工作的状态。
-// 参数:
-//
-//	workID - 工作的唯一标识符。
-//	status - 工作的新状态。
-//	outputFolder - 工作输出文件的文件夹路径。
-//	errorLog - 工作执行过程中遇到的错误日志。
-//	startTime - 工作开始的时间。
-//
-// 返回值:
-//
-//	如果更新过程中发生错误，则返回错误。
-func updateWorkStatus(workID uint, status, errorLog string, startTime time.Time) error {
-	// 使用事务来更新工作状态，确保数据的一致性。
-	err := config.Conf.DB.Transaction(func(tx *gorm.DB) error {
-		// 初始化要更新的字段。
-		updates := map[string]interface{}{"status": status}
-
-		// 当工作完成或失败时，更新处理时间和文件路径。
-		if status == "completed" || status == "splat failed" {
-			updates["process_time"] = int(time.Since(startTime).Seconds())
-		}
-
-		// 如果有错误日志，则更新错误日志字段。
-		if errorLog != "" {
-			updates["error_log"] = errorLog
-		}
-
-		// 执行更新操作。
-		return tx.Model(&models.Work{}).Where("id = ?", workID).Updates(updates).Error
-	})
-
-	// 如果更新过程中发生错误，返回详细的错误信息。
-	if err != nil {
-		return fmt.Errorf("status update error: %v", err)
-	}
-
-	// 更新成功，返回nil表示没有发生错误。
-	return nil
 }
 
 // TODO

@@ -33,13 +33,7 @@ import (
 //   - coverUrl: 封面图片URL
 //   - iterations: 迭代次数
 func InitModel(c *gin.Context) {
-	var initInfo struct {
-		VideoID    uint   `json:"id"`
-		WorkName   string `json:"workName"`
-		IsPublic   bool   `json:"isPublic"`
-		CoverUrl   string `json:"coverUrl"`
-		Iterations string `json:"iterations"`
-	}
+	var initInfo workService.InitInfo
 	if err := c.ShouldBindJSON(&initInfo); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err})
 		return
@@ -201,12 +195,7 @@ func InitModel(c *gin.Context) {
 func Transfer(c *gin.Context) {
 	jsonData := c.PostForm("data")
 
-	var transferInfo struct {
-		WorkID     uint   `json:"id"`
-		WorkName   string `json:"work_name"`
-		IsPublic   bool   `json:"is_public"`
-		Iterations string `json:"iterations"`
-	}
+	var transferInfo workService.TransferInfo
 	if err := json.Unmarshal([]byte(jsonData), &transferInfo); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON data"})
 		return
@@ -229,27 +218,10 @@ func Transfer(c *gin.Context) {
 	defer os.Remove(styleIMGPath)
 
 	// 查找原始作品信息
-	var origin models.Work
-	if err := config.Conf.DB.Where("id = ?", transferInfo.WorkID).First(&origin).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": "Work Not Found",
-		})
-		return
-	}
+	origin, err := workService.QueryWork(transferInfo.WorkID)
 
 	// 创建新的作品记录
-	var work models.Work
-	err = config.Conf.DB.Transaction(func(tx *gorm.DB) error {
-		work = models.Work{
-			UserID:     origin.UserID,
-			WorkName:   transferInfo.WorkName,
-			Status:     "processing",
-			IsPublic:   transferInfo.IsPublic,
-			Iterations: transferInfo.Iterations,
-			ParentID:   workService.GetParentID(&origin),
-		}
-		return tx.Create(&work).Error
-	})
+	work, err := workService.NewWork(transferInfo, origin)
 	if err != nil {
 		// 如果创建work记录失败，返回错误响应
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -493,18 +465,11 @@ func ShowWork(c *gin.Context) {
 		return
 	}
 
-	var workInfos []struct {
-		WorkID   uint   `json:"work_id"`
-		WorkName string `json:"workName"`
-		Status   string `json:"status"`
-	}
-
-	if err := config.Conf.DB.Model(&models.Work{}).
-		Where("user_id=?", user.ID).
-		Select("id as work_id, work_name, status").
-		Scan(&workInfos).Error; err != nil {
-		// 如果数据库查询失败，返回错误响应
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "作品查询失败"})
+	workInfos, err := workService.QueryWorkInfo(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("fail to query work: %v", err),
+		})
 		return
 	}
 

@@ -32,9 +32,11 @@ func InitAgent() error {
 	agent, err := react.NewAgent(ctx, &react.AgentConfig{
 		ToolCallingModel: model,
 		ToolsConfig: compose.ToolsNodeConfig{
-			Tools: []tool.BaseTool{tools.TransferFunc()},
+			Tools: []tool.BaseTool{tools.GetWorkTool()},
 		},
 	})
+
+	panic("TODO")
 }
 
 func (a *Agent) Invoke(ctx context.Context, content string) ([]*schema.Message, error) {

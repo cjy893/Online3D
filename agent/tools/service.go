@@ -1,14 +1,7 @@
 package tools
 
-import "myapp/models"
+type Service struct{}
 
-type fakeService struct {
-	repo *workDatabase
-}
-
-type workDatabase struct {
-	workByID map[uint]models.Work
-}
-
-func (wd *workDatabase) GetWorkByID(id uint) (models.Work, error) {
+func (s *Service) GetStyleImage(style string) (string, error) {
+	return "img/default.jpg", nil
 }

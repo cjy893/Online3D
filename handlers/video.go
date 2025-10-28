@@ -3,7 +3,6 @@ package handlers
 import (
 	"fmt"
 	"myapp/config"
-	"myapp/database"
 	"myapp/models"
 	"myapp/services/videoService"
 	"net/http"
@@ -23,14 +22,6 @@ import (
 //
 //	*models.User: 用户信息的指针，如果用户存在且验证通过
 //	bool: 表示是否成功获取到用户信息
-
-func isValidImage(mimeType string) bool {
-	allowed := map[string]bool{
-		"image/jpeg": true,
-		"image/png":  true,
-	}
-	return allowed[mimeType]
-}
 func UploadVideo(c *gin.Context) {
 	user, err := videoService.CheckUser(c)
 	if err != nil {
@@ -52,8 +43,6 @@ func UploadVideo(c *gin.Context) {
 
 	isPublic := c.PostForm("is_public") == "true"
 
-	coverFile, _ := c.FormFile("cover")
-
 	videoPath, err := videoService.SaveVideo(c, videoFile)
 	defer os.Remove(filepath.Dir(videoPath))
 	if err != nil {
@@ -62,25 +51,6 @@ func UploadVideo(c *gin.Context) {
 		})
 		return
 	}
-
-	var coverPath string
-	if coverFile != nil {
-		coverPath, err = videoService.SaveCover(c, coverFile)
-		defer os.Remove(coverPath)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": err.Error(),
-			})
-			return
-		}
-	}
-
-	tx := config.Conf.DB.Begin()
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
 
 	var video = models.Video{
 		UserID:   user.ID,
@@ -92,48 +62,6 @@ func UploadVideo(c *gin.Context) {
 	if err := videoService.CreateVideo(&video, videoPath); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("fail to create video:%v", err),
-		})
-		return
-	}
-
-	if coverFile != nil {
-		if !isValidImage(coverFile.Header.Get("Content-Type")) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "仅支持JPEG或PNG格式的封面图片"})
-			return
-		}
-
-		coverUrl := fmt.Sprintf("cv%d", video.ID)
-		if err := tx.Model(&video).Update("cover_url", coverUrl).Error; err != nil {
-			tx.Rollback()
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": fmt.Sprintf("fail to update video_cover:%v", err),
-			})
-			return
-		}
-	}
-
-	if coverFile != nil {
-		fileReader, err := os.Open(coverPath)
-		if err != nil {
-			tx.Rollback()
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": fmt.Sprintf("fail to open file:%v", err),
-			})
-			return
-		}
-		if err := database.StoreInBucket(fmt.Sprintf("covers/%d.jpg", video.ID), fileReader); err != nil {
-			tx.Rollback()
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": fmt.Sprintf("fail to upload cover:%v", err),
-			})
-			return
-		}
-	}
-
-	if err := tx.Commit().Error; err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("fail to commit :%v", err),
 		})
 		return
 	}

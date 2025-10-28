@@ -12,7 +12,29 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
+
+type InitInfo struct {
+	VideoID    uint   `json:"id"`
+	WorkName   string `json:"workName"`
+	IsPublic   bool   `json:"isPublic"`
+	CoverUrl   string `json:"coverUrl"`
+	Iterations string `json:"iterations"`
+}
+
+type TransferInfo struct {
+	WorkID     uint   `json:"id"`
+	WorkName   string `json:"work_name"`
+	IsPublic   bool   `json:"is_public"`
+	Iterations string `json:"iterations"`
+}
+
+type WorkInfo struct {
+	WorkID   uint   `json:"work_id"`
+	WorkName string `json:"workName"`
+	Status   string `json:"status"`
+}
 
 type Processor struct {
 	TrainerPath      string
@@ -197,4 +219,46 @@ func CheckUser(c *gin.Context) (*models.User, error) {
 	}
 
 	return &user, nil
+}
+
+func QueryWorkInfo(userID uint) ([]WorkInfo, error) {
+	var workInfos []WorkInfo
+	if err := config.Conf.DB.Model(&models.Work{}).
+		Where("user_id=?", userID).
+		Select("id as work_id, work_name, status").
+		Scan(&workInfos).Error; err != nil {
+
+		return nil, err
+	}
+
+	return workInfos, nil
+}
+
+func QueryWork(workID uint) (models.Work, error) {
+	var origin models.Work
+	if err := config.Conf.DB.Where("id = ?", workID).First(&origin).Error; err != nil {
+		return models.Work{}, err
+	}
+
+	return origin, nil
+}
+
+func NewWork(transferInfo TransferInfo, origin models.Work) (models.Work, error) {
+	var work models.Work
+	err := config.Conf.DB.Transaction(func(tx *gorm.DB) error {
+		work = models.Work{
+			UserID:     origin.UserID,
+			WorkName:   transferInfo.WorkName,
+			Status:     "processing",
+			IsPublic:   transferInfo.IsPublic,
+			Iterations: transferInfo.Iterations,
+			ParentID:   GetParentID(&origin),
+		}
+		return tx.Create(&work).Error
+	})
+	if err != nil {
+		return models.Work{}, err
+	}
+
+	return work, nil
 }

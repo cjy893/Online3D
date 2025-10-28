@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 func CheckUser(c *gin.Context) (*models.User, error) {
@@ -41,17 +42,6 @@ func SaveVideo(c *gin.Context, file *multipart.FileHeader) (string, error) {
 	return videoFilePath, nil
 }
 
-func SaveCover(c *gin.Context, file *multipart.FileHeader) (string, error) {
-	ext := filepath.Ext(file.Filename)
-	coverFileUUID := uuid.New().String()
-	coverFilePath := filepath.Join("temp", coverFileUUID, coverFileUUID+ext)
-
-	if err := c.SaveUploadedFile(file, coverFilePath); err != nil {
-		return "", fmt.Errorf("保存封面文件失败:%v", err)
-	}
-	return coverFilePath, nil
-}
-
 func CreateVideo(video *models.Video, videoPath string) error {
 	tx := config.Conf.DB.Begin()
 	defer func() {
@@ -60,7 +50,7 @@ func CreateVideo(video *models.Video, videoPath string) error {
 		}
 	}()
 
-	if err := createVideo(video); err != nil {
+	if err := createVideo(video, tx); err != nil {
 		tx.Rollback()
 		return err
 	}
@@ -72,8 +62,8 @@ func CreateVideo(video *models.Video, videoPath string) error {
 	return tx.Commit().Error
 }
 
-func createVideo(video *models.Video) error {
-	return config.Conf.DB.Create(video).Error
+func createVideo(video *models.Video, tx *gorm.DB) error {
+	return tx.Create(video).Error
 }
 
 func uploadVideo(videoPath string, videoID uint) error {

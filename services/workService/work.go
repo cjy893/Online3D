@@ -1,7 +1,9 @@
 package workService
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"myapp/config"
 	"myapp/database"
 	"myapp/models"
@@ -346,27 +348,50 @@ func UpdateWorkStatus(workID uint, status, errorLog string, startTime time.Time)
 	return nil
 }
 
-func ProcessTasks(task *websocket.Task) {
-	go func(t *websocket.Task) {
-		var result string
-		var err error
+func ProcessTasks(ctx context.Context, TaskQueue chan *websocket.Task) {
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("Context cancelled, processor exiting")
+			return
+		case task, ok := <-TaskQueue:
+			if !ok {
+				log.Println("Task queue channel closed")
+				return
+			}
+			if task != nil {
+				// 处理任务的代码保持不变
+				go func(t *websocket.Task) {
+					var result string
+					var err error
 
-		switch t.Type {
-		case "init_model":
-			result, err = processInitModelTask(t)
-		case "transfer":
-			result, err = processTransferTask(t)
-		default:
-			result = "unknown_task_type"
-			err = fmt.Errorf("unknown task type: %s", t.Type)
-		}
+					switch t.Type {
+					case "init_model":
+						result, err = processInitModelTask(t)
+					case "transfer":
+						result, err = processTransferTask(t)
+					default:
+						result = "unknown_task_type"
+						err = fmt.Errorf("unknown task type: %s", t.Type)
+					}
 
-		// 通过 WebSocket 通知前端结果
-		if config.Conf.Hub != nil {
-			message := websocket.Message{Status: result, Message: result, Type: t.Type, WorkID: t.WorkID, Time: time.Now(), Error: err.Error()}
-			config.Conf.Hub.BroadcastToUser(t.UserID, message)
+					if config.Conf.Hub != nil {
+						message := websocket.Message{
+							Status:  result,
+							Message: result,
+							Type:    t.Type,
+							WorkID:  t.WorkID,
+							Time:    time.Now(),
+						}
+						if err != nil {
+							message.Error = err.Error()
+						}
+						config.Conf.Hub.BroadcastToUser(t.UserID, message)
+					}
+				}(task)
+			}
 		}
-	}(task)
+	}
 }
 
 func processInitModelTask(task *websocket.Task) (string, error) {

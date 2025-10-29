@@ -67,7 +67,7 @@ func InitModel(c *gin.Context) {
 		return
 	}
 
-	task := websocket.Task{
+	task := &websocket.Task{
 		Data:      initInfo,
 		ID:        uuid.New().String(),
 		StartTime: time.Now(),
@@ -76,7 +76,7 @@ func InitModel(c *gin.Context) {
 		WorkID:    work.ID,
 	}
 
-	workService.ProcessTasks(&task)
+	websocket.Tasks.Tasks <- task
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Model initialization and processing completed successfully",
@@ -149,7 +149,7 @@ func Transfer(c *gin.Context) {
 		WorkID:         work.ID,
 	}
 
-	task := websocket.Task{
+	task := &websocket.Task{
 		Data:      taskData,
 		ID:        uuid.New().String(),
 		StartTime: time.Now(),
@@ -158,7 +158,7 @@ func Transfer(c *gin.Context) {
 		WorkID:    work.ID,
 	}
 
-	workService.ProcessTasks(&task)
+	config.Conf.TaskQueue.Tasks <- task
 
 	// 返回成功响应
 	c.JSON(http.StatusOK, gin.H{

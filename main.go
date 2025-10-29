@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"myapp/agent"
 	"myapp/config"
 	"myapp/router"
+	"myapp/services/workService"
 	"os"
 	"os/signal"
 	"syscall"
@@ -46,6 +48,8 @@ func main() {
 	// 初始化路由
 	router := router.RouterConfig()
 	serverAddress := ":" + config.Conf.ServerPort
+
+	go workService.ProcessTasks(context.Background(), config.Conf.TaskQueue.Tasks)
 
 	// 使用错误通道处理服务启动失败
 	errChan := make(chan error)

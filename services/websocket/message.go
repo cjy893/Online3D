@@ -2,6 +2,8 @@ package websocket
 
 import "time"
 
+var Tasks TaskQueue
+
 type Message struct {
 	Type    string    `json:"type"`
 	WorkID  uint      `json:"work_id"`

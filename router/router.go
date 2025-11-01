@@ -19,7 +19,9 @@ func RouterConfig() *gin.Engine {
 	router.POST("/register", handlers.Register)
 	router.POST("/login", handlers.Login)
 
-	router.GET("/ws")
+	router.GET("/ws", func(c *gin.Context) {
+		handlers.ServeWs(config.Conf.Hub, c)
+	})
 
 	search := router.Group("/search")
 	{

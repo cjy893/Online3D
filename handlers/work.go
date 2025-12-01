@@ -166,7 +166,8 @@ func Transfer(c *gin.Context) {
 	})
 }
 
-// TODO
+// Depplicated
+// 已废弃
 func UploadWork(c *gin.Context) {
 	user, err := workService.CheckUser(c)
 	if err != nil {

@@ -21,6 +21,7 @@ type ImageGenerator struct {
 var Generator *ImageGenerator
 
 func InitImageGenerationModel(ctx context.Context) error {
+	Generator = &ImageGenerator{}
 	imageGenerationModel, err := ark.NewImageGenerationModel(ctx, &ark.ImageGenerationConfig{
 		APIKey: os.Getenv("ARK_API_KEY"),
 		Model:  os.Getenv("ARK_IMAGE_MODEL_ID"), // Use an appropriate image model ID

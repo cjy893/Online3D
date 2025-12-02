@@ -71,7 +71,7 @@ func InitModel(c *gin.Context) {
 		Data:      initInfo,
 		ID:        uuid.New().String(),
 		StartTime: time.Now(),
-		Type:      "stylize",
+		Type:      "init_model",
 		UserID:    work.UserID,
 		WorkID:    work.ID,
 	}
@@ -166,7 +166,7 @@ func Transfer(c *gin.Context) {
 	})
 }
 
-// Depplicated
+// Deplicated
 // 已废弃
 func UploadWork(c *gin.Context) {
 	user, err := workService.CheckUser(c)

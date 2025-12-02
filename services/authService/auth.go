@@ -18,11 +18,11 @@ func CreateUser(user *models.User) error {
 }
 
 func CheckUser(user models.User) error {
-	if err := config.Conf.DB.Where("account = ?", user.Account).First(&user).Error; err != nil {
-		return fmt.Errorf("用户名已存在:%v", err)
+	if err := config.Conf.DB.Where("account = ?", user.Account).First(&user).Error; err == nil {
+		return fmt.Errorf("用户名已存在")
 	}
-	if err := config.Conf.DB.Where("email = ?", user.Email).First(&user).Error; err != nil {
-		return fmt.Errorf("邮箱已注册:%v", err)
+	if err := config.Conf.DB.Where("email = ?", user.Email).First(&user).Error; err == nil {
+		return fmt.Errorf("邮箱已注册")
 	}
 	return nil
 }

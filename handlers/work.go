@@ -76,7 +76,7 @@ func InitModel(c *gin.Context) {
 		WorkID:    work.ID,
 	}
 
-	websocket.Tasks.Tasks <- task
+	config.Conf.TaskQueue.Tasks <- task
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Model initialization and processing completed successfully",
